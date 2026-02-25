@@ -1,0 +1,26 @@
+{
+  "name": "agent-task-coordinator",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -n server,dashboard -c blue,green \"pnpm dev:server\" \"pnpm dev:dashboard\"",
+    "dev:server": "pnpm -F @atc/server dev",
+    "dev:dashboard": "pnpm -F @atc/dashboard dev",
+    "build": "pnpm -F @atc/core build && pnpm -F @atc/server build && pnpm -F @atc/dashboard build",
+    "start": "node packages/server/dist/index.js",
+    "db:generate": "pnpm -F @atc/core db:generate",
+    "db:migrate": "pnpm -F @atc/core db:migrate",
+    "test": "vitest",
+    "lint": "biome check .",
+    "format": "biome format --write ."
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.9.0",
+    "concurrently": "^9.1.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["@biomejs/biome", "better-sqlite3", "esbuild"]
+  }
+}

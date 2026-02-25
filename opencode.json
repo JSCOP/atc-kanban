@@ -1,0 +1,10 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "agent-task-coordinator": {
+      "type": "local",
+      "command": ["node", "packages/server/dist/index.js", "--mcp"],
+      "enabled": true
+    }
+  }
+}
