@@ -3,9 +3,35 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { ATCServices } from '@atc/core';
 
 /**
+ * Tracks the agent registered in this MCP session.
+ * Used for cleanup when the MCP stdio process terminates.
+ */
+export class McpSessionTracker {
+  private agentId: string | null = null;
+  private agentToken: string | null = null;
+
+  setAgent(agentId: string, agentToken: string): void {
+    this.agentId = agentId;
+    this.agentToken = agentToken;
+  }
+
+  getAgentId(): string | null {
+    return this.agentId;
+  }
+
+  getAgentToken(): string | null {
+    return this.agentToken;
+  }
+
+  clear(): void {
+    this.agentId = null;
+    this.agentToken = null;
+  }
+}
+/**
  * Register common MCP tools (available to all agents).
  */
-export function registerCommonTools(server: McpServer, services: ATCServices) {
+export function registerCommonTools(server: McpServer, services: ATCServices, sessionTracker: McpSessionTracker) {
   // ── register_agent ──────────────────────────────────────────────────────
   server.tool(
     'register_agent',
@@ -22,6 +48,8 @@ export function registerCommonTools(server: McpServer, services: ATCServices) {
         agentType: agent_type,
       });
 
+      // Track this agent in the session for cleanup on process exit
+      sessionTracker.setAgent(result.agentId, result.agentToken);
       return {
         content: [
           {

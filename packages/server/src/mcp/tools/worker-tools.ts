@@ -10,7 +10,7 @@ export function registerWorkerTools(server: McpServer, services: ATCServices) {
   // ── claim_task ──────────────────────────────────────────────────────────
   server.tool(
     'claim_task',
-    'Claim a task for execution. Acquires a physical lock. Only "todo" tasks with met dependencies can be claimed.',
+    'Claim a task for execution. Acquires a physical lock. Only "todo" tasks with met dependencies can be claimed. Tasks assigned to disconnected workers can also be claimed.',
     {
       agent_token: z.string().describe('Your agent token'),
       task_id: z.string().describe('Task ID to claim'),
@@ -71,8 +71,7 @@ export function registerWorkerTools(server: McpServer, services: ATCServices) {
       message: z.string().describe('Progress update message'),
     },
     async ({ lock_token, task_id, message }) => {
-      const agent = services.agentRegistry.getByToken(lock_token).id;
-      // We need the agent_id, get it from the lock
+      // Get agent_id from the lock record (not from agent_token lookup)
       const { getRawDb } = await import('@atc/core');
       const raw = getRawDb();
       const lock = raw

@@ -39,19 +39,49 @@ export class LockEngine {
 
     // Use raw SQLite transaction for atomicity
     const claimTxn = raw.transaction(() => {
-      // 1. Check task status
+      // 1. Check task exists
       const task = raw
-        .prepare('SELECT id, status FROM tasks WHERE id = ? AND status = ?')
-        .get(taskId, 'todo') as { id: string; status: string } | undefined;
+        .prepare('SELECT id, status, assigned_agent_id FROM tasks WHERE id = ?')
+        .get(taskId) as { id: string; status: string; assigned_agent_id: string | null } | undefined;
 
       if (!task) {
         throw new ATCError(
-          'TASK_NOT_CLAIMABLE',
-          `Task ${taskId} is not in 'todo' status or does not exist`,
+          'TASK_NOT_FOUND',
+          `Task ${taskId} does not exist`,
         );
       }
 
-      // 2. Check dependencies
+      // 2. Determine if task is claimable
+      let needsForceRelease = false;
+
+      if (task.status === 'todo') {
+        // Direct claim — standard path
+      } else if (
+        (task.status === 'in_progress' || task.status === 'locked') &&
+        task.assigned_agent_id
+      ) {
+        // Check if the assigned agent is disconnected
+        const assignedAgent = raw
+          .prepare('SELECT id, status FROM agents WHERE id = ?')
+          .get(task.assigned_agent_id) as { id: string; status: string } | undefined;
+
+        if (assignedAgent && assignedAgent.status === 'disconnected') {
+          // Agent is offline — allow takeover
+          needsForceRelease = true;
+        } else {
+          throw new ATCError(
+            'TASK_NOT_CLAIMABLE',
+            `Task ${taskId} is '${task.status}' and assigned to an active agent`,
+          );
+        }
+      } else {
+        throw new ATCError(
+          'TASK_NOT_CLAIMABLE',
+          `Task ${taskId} is in '${task.status}' status and cannot be claimed`,
+        );
+      }
+
+      // 3. Check dependencies
       const unmetDeps = raw
         .prepare(
           `SELECT COUNT(*) as cnt FROM task_dependencies d
@@ -67,41 +97,33 @@ export class LockEngine {
         );
       }
 
-      // 3. Check no existing lock
-      const existingLock = raw
-        .prepare('SELECT task_id FROM task_locks WHERE task_id = ?')
-        .get(taskId);
+      // 4. Force-release existing lock if taking over from disconnected agent
+      if (needsForceRelease) {
+        raw.prepare('DELETE FROM task_locks WHERE task_id = ?').run(taskId);
+      } else {
+        // Verify no existing lock for todo tasks
+        const existingLock = raw
+          .prepare('SELECT task_id FROM task_locks WHERE task_id = ?')
+          .get(taskId);
 
-      if (existingLock) {
-        throw new ATCError('ALREADY_LOCKED', `Task ${taskId} is already locked`);
+        if (existingLock) {
+          throw new ATCError('ALREADY_LOCKED', `Task ${taskId} is already locked`);
+        }
       }
 
-      // 4. Create lock
+      // 5. Create lock
       raw
         .prepare(
           'INSERT INTO task_locks (task_id, agent_id, lock_token, locked_at, expires_at) VALUES (?, ?, ?, ?, ?)',
         )
         .run(taskId, agentId, lockToken, now, expiresAt);
 
-      // 5. Update task status
+      // 6. Update task status
       raw
         .prepare(
           'UPDATE tasks SET status = ?, assigned_agent_id = ?, updated_at = ? WHERE id = ?',
         )
         .run('in_progress', agentId, now, taskId);
-
-      // 6. Record event
-      raw
-        .prepare(
-          'INSERT INTO events (type, task_id, agent_id, payload, created_at) VALUES (?, ?, ?, ?, ?)',
-        )
-        .run(
-          'TASK_CLAIMED',
-          taskId,
-          agentId,
-          JSON.stringify({ lockToken }),
-          now,
-        );
     });
 
     claimTxn();

@@ -2,7 +2,6 @@ import { existsSync, mkdirSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { dirname, resolve } from 'node:path';
 import { serve } from '@hono/node-server';
-import { serve } from '@hono/node-server';
 import { createServices, closeConnection } from '@atc/core';
 import { createApp } from './http/app.js';
 import { createWebSocketHandler } from './ws/handler.js';
@@ -23,7 +22,7 @@ const isMcpMode = process.argv.includes('--mcp');
 
 const dbDir = dirname(resolve(DB_PATH));
 if (!existsSync(dbDir)) {
-  mkdirSync(dataDir, { recursive: true });
+  mkdirSync(dbDir, { recursive: true });
 }
 
 // ── Initialize services ─────────────────────────────────────────────────────

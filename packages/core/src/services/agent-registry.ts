@@ -116,6 +116,59 @@ export class AgentRegistry {
   }
 
   /**
+   * Disconnect an agent by ID and release all its task locks.
+   * Used for process-based cleanup when MCP stdio process terminates.
+   */
+  async disconnectById(agentId: string, reason: string = 'process_terminated'): Promise<void> {
+    const agent = this.db
+      .select()
+      .from(agents)
+      .where(eq(agents.id, agentId))
+      .get();
+
+    if (!agent || agent.status === 'disconnected') {
+      return; // Already disconnected or doesn't exist
+    }
+
+    const now = new Date().toISOString();
+
+    // 1. Set agent status to disconnected
+    this.db
+      .update(agents)
+      .set({ status: 'disconnected' })
+      .where(eq(agents.id, agentId))
+      .run();
+
+    // 2. Find and release all task locks held by this agent
+    const agentLocks = this.db
+      .select()
+      .from(taskLocks)
+      .where(eq(taskLocks.agentId, agentId))
+      .all();
+
+    for (const lock of agentLocks) {
+      this.db.delete(taskLocks).where(eq(taskLocks.taskId, lock.taskId)).run();
+
+      this.db
+        .update(tasks)
+        .set({ status: 'todo', assignedAgentId: null, updatedAt: now })
+        .where(eq(tasks.id, lock.taskId))
+        .run();
+
+      await this.eventBus.publish('TASK_RELEASED', {
+        taskId: lock.taskId,
+        agentId,
+        payload: { reason },
+      });
+    }
+
+    await this.eventBus.publish('AGENT_DISCONNECTED', {
+      agentId,
+      payload: { reason, releasedTasks: agentLocks.map(l => l.taskId) },
+    });
+  }
+
+  /**
    * Get agent by token (validates existence + active status).
    */
   getByToken(agentToken: string): Agent {
