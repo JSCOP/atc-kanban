@@ -80,10 +80,10 @@ export function SettingsPage() {
           </div>
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-gray-300">Heartbeat Timeout</p>
-              <p className="text-xs text-gray-500">Agent disconnects after this period without heartbeat</p>
+              <p className="text-gray-300">Process Health Check</p>
+              <p className="text-xs text-gray-500">Agent health determined by OS process ID (PID) monitoring</p>
             </div>
-            <span className="text-gray-400 font-mono bg-gray-900 px-3 py-1 rounded">60 seconds</span>
+            <span className="text-gray-400 font-mono bg-gray-900 px-3 py-1 rounded">every 10s</span>
           </div>
           <div className="flex items-center justify-between">
             <div>

@@ -1,29 +1,46 @@
-import { eq, and } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
-import { agents, taskLocks, tasks } from '../db/schema.js';
 import type { getConnection } from '../db/connection.js';
-import type { EventBus } from './event-bus.js';
+import { agents, taskLocks, tasks } from '../db/schema.js';
 import type { Agent, AgentInfo, RegisterAgentInput, RegisterAgentResult } from '../types.js';
 import { ATCError } from '../types.js';
+import type { EventBus } from './event-bus.js';
 
 type DbType = ReturnType<typeof getConnection>;
+
+/**
+ * Check if a process with the given PID is still alive.
+ * Cross-platform: Windows (OpenProcess), Linux (/proc), macOS (kill -0).
+ * Zero external dependencies.
+ */
+export function isProcessAlive(pid: number): boolean {
+  if (!Number.isInteger(pid) || pid <= 0) return false;
+
+  try {
+    process.kill(pid, 0); // signal 0 = existence check only, does NOT kill
+    return true;
+  } catch (err: unknown) {
+    const error = err as NodeJS.ErrnoException;
+    if (error.code === 'EPERM') return true; // process exists, no permission
+    if (error.code === 'ESRCH') return false; // no such process
+    return false;
+  }
+}
 
 export class AgentRegistry {
   private db: DbType;
   private eventBus: EventBus;
-  private heartbeatTimeoutMs: number;
 
-  constructor(db: DbType, eventBus: EventBus, heartbeatTimeoutSeconds: number = 60) {
+  constructor(db: DbType, eventBus: EventBus) {
     this.db = db;
     this.eventBus = eventBus;
-    this.heartbeatTimeoutMs = heartbeatTimeoutSeconds * 1000;
   }
 
   /**
    * Register a new agent. If role=main, enforces uniqueness.
    */
   async register(input: RegisterAgentInput): Promise<RegisterAgentResult> {
-    const { name, role, agentType } = input;
+    const { name, role, agentType, processId } = input;
     const agentId = uuidv4();
     const agentToken = uuidv4();
     const now = new Date().toISOString();
@@ -37,25 +54,24 @@ export class AgentRegistry {
         .get();
 
       if (existingMain) {
-        // Check if heartbeat expired
-        const lastBeat = new Date(existingMain.lastHeartbeat).getTime();
-        const elapsed = Date.now() - lastBeat;
+        // Check if existing main's process is still alive
+        const mainAlive = existingMain.processId ? isProcessAlive(existingMain.processId) : false; // no PID → can't verify → allow replacement
 
-        if (elapsed > this.heartbeatTimeoutMs) {
-          // Force disconnect stale main
-          this.db
-            .update(agents)
-            .set({ status: 'disconnected' })
-            .where(eq(agents.id, existingMain.id))
-            .run();
-
-          await this.eventBus.publish('AGENT_DISCONNECTED', {
-            agentId: existingMain.id,
-            payload: { reason: 'heartbeat_expired', replacedBy: agentId },
-          });
-        } else {
+        if (mainAlive) {
           throw new ATCError('MAIN_ALREADY_ACTIVE', 'Main agent already active', 409);
         }
+
+        // Process is dead → force disconnect stale main
+        this.db
+          .update(agents)
+          .set({ status: 'disconnected' })
+          .where(eq(agents.id, existingMain.id))
+          .run();
+
+        await this.eventBus.publish('AGENT_DISCONNECTED', {
+          agentId: existingMain.id,
+          payload: { reason: 'process_dead', replacedBy: agentId },
+        });
       }
     }
 
@@ -70,12 +86,13 @@ export class AgentRegistry {
         status: 'active',
         connectedAt: now,
         lastHeartbeat: now,
+        processId: processId ?? null,
       })
       .run();
 
     await this.eventBus.publish('AGENT_CONNECTED', {
       agentId,
-      payload: { name, role, agentType },
+      payload: { name, role, agentType, processId },
     });
 
     return { agentId, agentToken, role };
@@ -83,16 +100,14 @@ export class AgentRegistry {
 
   /**
    * Update heartbeat timestamp for an agent.
+   * Still useful for main agents to retrieve pending events.
+   * No longer used for health determination.
    */
   heartbeat(agentToken: string): Agent {
     const agent = this.getByToken(agentToken);
     const now = new Date().toISOString();
 
-    this.db
-      .update(agents)
-      .set({ lastHeartbeat: now })
-      .where(eq(agents.id, agent.id))
-      .run();
+    this.db.update(agents).set({ lastHeartbeat: now }).where(eq(agents.id, agent.id)).run();
 
     return { ...agent, lastHeartbeat: now };
   }
@@ -103,11 +118,7 @@ export class AgentRegistry {
   async disconnect(agentToken: string): Promise<void> {
     const agent = this.getByToken(agentToken);
 
-    this.db
-      .update(agents)
-      .set({ status: 'disconnected' })
-      .where(eq(agents.id, agent.id))
-      .run();
+    this.db.update(agents).set({ status: 'disconnected' }).where(eq(agents.id, agent.id)).run();
 
     await this.eventBus.publish('AGENT_DISCONNECTED', {
       agentId: agent.id,
@@ -119,12 +130,8 @@ export class AgentRegistry {
    * Disconnect an agent by ID and release all its task locks.
    * Used for process-based cleanup when MCP stdio process terminates.
    */
-  async disconnectById(agentId: string, reason: string = 'process_terminated'): Promise<void> {
-    const agent = this.db
-      .select()
-      .from(agents)
-      .where(eq(agents.id, agentId))
-      .get();
+  async disconnectById(agentId: string, reason = 'process_terminated'): Promise<void> {
+    const agent = this.db.select().from(agents).where(eq(agents.id, agentId)).get();
 
     if (!agent || agent.status === 'disconnected') {
       return; // Already disconnected or doesn't exist
@@ -133,18 +140,10 @@ export class AgentRegistry {
     const now = new Date().toISOString();
 
     // 1. Set agent status to disconnected
-    this.db
-      .update(agents)
-      .set({ status: 'disconnected' })
-      .where(eq(agents.id, agentId))
-      .run();
+    this.db.update(agents).set({ status: 'disconnected' }).where(eq(agents.id, agentId)).run();
 
     // 2. Find and release all task locks held by this agent
-    const agentLocks = this.db
-      .select()
-      .from(taskLocks)
-      .where(eq(taskLocks.agentId, agentId))
-      .all();
+    const agentLocks = this.db.select().from(taskLocks).where(eq(taskLocks.agentId, agentId)).all();
 
     for (const lock of agentLocks) {
       this.db.delete(taskLocks).where(eq(taskLocks.taskId, lock.taskId)).run();
@@ -164,7 +163,7 @@ export class AgentRegistry {
 
     await this.eventBus.publish('AGENT_DISCONNECTED', {
       agentId,
-      payload: { reason, releasedTasks: agentLocks.map(l => l.taskId) },
+      payload: { reason, releasedTasks: agentLocks.map((l) => l.taskId) },
     });
   }
 
@@ -172,11 +171,7 @@ export class AgentRegistry {
    * Get agent by token (validates existence + active status).
    */
   getByToken(agentToken: string): Agent {
-    const agent = this.db
-      .select()
-      .from(agents)
-      .where(eq(agents.agentToken, agentToken))
-      .get();
+    const agent = this.db.select().from(agents).where(eq(agents.agentToken, agentToken)).get();
 
     if (!agent) {
       throw new ATCError('AGENT_NOT_FOUND', 'Agent not found', 404);
@@ -195,6 +190,7 @@ export class AgentRegistry {
       status: agent.status as 'active' | 'disconnected',
       connectedAt: agent.connectedAt,
       lastHeartbeat: agent.lastHeartbeat,
+      processId: agent.processId,
     };
   }
 
@@ -206,11 +202,7 @@ export class AgentRegistry {
 
     return allAgents.map((agent) => {
       // Find current task lock
-      const lock = this.db
-        .select()
-        .from(taskLocks)
-        .where(eq(taskLocks.agentId, agent.id))
-        .get();
+      const lock = this.db.select().from(taskLocks).where(eq(taskLocks.agentId, agent.id)).get();
 
       let currentTaskId: string | null = null;
       let currentTaskTitle: string | null = null;
@@ -247,6 +239,7 @@ export class AgentRegistry {
         status: agent.status as 'active' | 'disconnected',
         connectedAt: agent.connectedAt,
         lastHeartbeat: agent.lastHeartbeat,
+        processId: agent.processId,
         currentTaskId,
         currentTaskTitle,
         tasksCompleted: completed,
@@ -256,28 +249,23 @@ export class AgentRegistry {
   }
 
   /**
-   * Check and disconnect agents with expired heartbeats.
+   * Check process health for all active agents.
+   * Uses OS-level PID checking — no heartbeat needed.
+   * Agents whose process has died are disconnected and their locks released.
    */
-  async checkHeartbeats(): Promise<void> {
-    const cutoff = new Date(Date.now() - this.heartbeatTimeoutMs).toISOString();
-    const staleAgents = this.db
-      .select()
-      .from(agents)
-      .where(and(eq(agents.status, 'active')))
-      .all()
-      .filter((a) => a.lastHeartbeat < cutoff);
+  async checkProcessHealth(): Promise<void> {
+    const activeAgents = this.db.select().from(agents).where(eq(agents.status, 'active')).all();
 
-    for (const agent of staleAgents) {
-      this.db
-        .update(agents)
-        .set({ status: 'disconnected' })
-        .where(eq(agents.id, agent.id))
-        .run();
+    for (const agent of activeAgents) {
+      if (agent.processId == null) {
+        // No PID recorded (e.g., HTTP-mode agent) — skip PID check
+        continue;
+      }
 
-      await this.eventBus.publish('AGENT_DISCONNECTED', {
-        agentId: agent.id,
-        payload: { reason: 'heartbeat_expired' },
-      });
+      if (!isProcessAlive(agent.processId)) {
+        // Process is dead → disconnect + release locks
+        await this.disconnectById(agent.id, 'process_dead');
+      }
     }
   }
 }

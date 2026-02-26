@@ -81,8 +81,8 @@ function AgentCard({ agent }: { agent: import('../types').Agent }) {
           <p className="text-xs text-gray-500">Failed</p>
         </div>
         <div>
-          <p className="text-sm font-mono text-gray-400">{formatDuration(agent.lastHeartbeat)}</p>
-          <p className="text-xs text-gray-500">Last Seen</p>
+          <p className="text-sm font-mono text-gray-400">{agent.processId ?? '—'}</p>
+          <p className="text-xs text-gray-500">PID</p>
         </div>
       </div>
     </div>

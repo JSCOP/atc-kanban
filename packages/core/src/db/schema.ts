@@ -83,6 +83,7 @@ export const agents = sqliteTable(
     lastHeartbeat: text('last_heartbeat')
       .notNull()
       .$defaultFn(() => new Date().toISOString()),
+    processId: integer('process_id'),
   },
   (table) => [
     uniqueIndex('idx_unique_active_main')

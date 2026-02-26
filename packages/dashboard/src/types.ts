@@ -29,6 +29,7 @@ export interface Agent {
   status: 'active' | 'disconnected';
   connectedAt: string;
   lastHeartbeat: string;
+  processId: number | null;
   currentTaskId: string | null;
   currentTaskTitle: string | null;
   tasksCompleted: number;

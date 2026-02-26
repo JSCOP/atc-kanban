@@ -67,7 +67,8 @@ export function initializeDatabase(dbPath?: string): ReturnType<typeof drizzle> 
       agent_token     TEXT NOT NULL UNIQUE,
       status          TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','disconnected')),
       connected_at    TEXT NOT NULL DEFAULT (datetime('now')),
-      last_heartbeat  TEXT NOT NULL DEFAULT (datetime('now'))
+      last_heartbeat  TEXT NOT NULL DEFAULT (datetime('now')),
+      process_id      INTEGER
     );
 
     CREATE TABLE IF NOT EXISTS tasks (

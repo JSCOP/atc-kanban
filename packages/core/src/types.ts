@@ -54,6 +54,7 @@ export interface Agent {
   status: AgentStatus;
   connectedAt: string;
   lastHeartbeat: string;
+  processId: number | null;
 }
 
 export interface AgentInfo extends Agent {
@@ -67,6 +68,7 @@ export interface RegisterAgentInput {
   name: string;
   role: AgentRole;
   agentType?: string;
+  processId?: number;
 }
 
 export interface RegisterAgentResult {

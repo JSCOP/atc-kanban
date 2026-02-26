@@ -39,8 +39,8 @@ export function AgentCard({ agent }: AgentCardProps) {
           <span className="text-gray-400 font-mono">{timeAgo(agent.connectedAt)}</span>
         </div>
         <div className="flex justify-between">
-          <span className="text-gray-500">Last heartbeat</span>
-          <span className="text-gray-400 font-mono">{timeAgo(agent.lastHeartbeat)}</span>
+          <span className="text-gray-500">PID</span>
+          <span className="text-gray-400 font-mono">{agent.processId ?? '—'}</span>
         </div>
         {agent.currentTaskTitle && (
           <div className="flex justify-between">

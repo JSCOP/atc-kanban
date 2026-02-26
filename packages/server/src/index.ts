@@ -13,7 +13,7 @@ import { setupStaticServing } from './static.js';
 const PORT = parseInt(process.env.PORT || '4000', 10);
 const DB_PATH = process.env.DB_PATH || './data/atc.sqlite';
 const LOCK_TTL_MINUTES = parseInt(process.env.LOCK_TTL_MINUTES || '30', 10);
-const HEARTBEAT_TIMEOUT = parseInt(process.env.HEARTBEAT_TIMEOUT_SECONDS || '60', 10);
+// PID-based health checking replaces heartbeat-based timeout
 
 // Check if running in MCP stdio mode
 const isMcpMode = process.argv.includes('--mcp');
@@ -30,18 +30,17 @@ if (!existsSync(dbDir)) {
 const services = createServices({
   dbPath: DB_PATH,
   lockTtlMinutes: LOCK_TTL_MINUTES,
-  heartbeatTimeoutSeconds: HEARTBEAT_TIMEOUT,
 });
 
 // ── Start lock expiry checker ───────────────────────────────────────────────
 
 services.lockEngine.startExpiryChecker(30000);
 
-// ── Heartbeat checker ───────────────────────────────────────────────────────
+// ── Process health checker (PID-based) ───────────────────────────────────────
 
-const heartbeatChecker = setInterval(() => {
-  services.agentRegistry.checkHeartbeats().catch(console.error);
-}, 30000);
+const processHealthChecker = setInterval(() => {
+  services.agentRegistry.checkProcessHealth().catch(console.error);
+}, 10000); // Check every 10 seconds
 
 // ── MCP Mode ────────────────────────────────────────────────────────────────
 
@@ -98,7 +97,7 @@ if (isMcpMode) {
   const shutdown = () => {
     console.log('\n[ATC] Shutting down...');
     services.lockEngine.stopExpiryChecker();
-    clearInterval(heartbeatChecker);
+    clearInterval(processHealthChecker);
     wss.close();
     server.close();
     closeConnection();

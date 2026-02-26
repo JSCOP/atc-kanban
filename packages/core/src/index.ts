@@ -3,7 +3,7 @@ export { getConnection, getRawDb, closeConnection, initializeDatabase } from './
 export * as schema from './db/schema.js';
 
 import { initializeDatabase } from './db/connection.js';
-import { AgentRegistry } from './services/agent-registry.js';
+import { AgentRegistry, isProcessAlive } from './services/agent-registry.js';
 import { DependencyResolver } from './services/dependency-resolver.js';
 // ── Services ─────────────────────────────────────────────────────────────────
 import { EventBus } from './services/event-bus.js';
@@ -15,6 +15,7 @@ import { TaskService } from './services/task-service.js';
 export {
   EventBus,
   AgentRegistry,
+  isProcessAlive,
   RoleManager,
   DependencyResolver,
   TaskService,
@@ -69,14 +70,13 @@ export function createServices(
   options: {
     dbPath?: string;
     lockTtlMinutes?: number;
-    heartbeatTimeoutSeconds?: number;
   } = {},
 ): ATCServices {
-  const { lockTtlMinutes = 30, heartbeatTimeoutSeconds = 60 } = options;
+  const { lockTtlMinutes = 30 } = options;
 
   const db = initializeDatabase(options.dbPath);
   const eventBus = new EventBus(db);
-  const agentRegistry = new AgentRegistry(db, eventBus, heartbeatTimeoutSeconds);
+  const agentRegistry = new AgentRegistry(db, eventBus);
   const roleManager = new RoleManager(agentRegistry);
   const dependencyResolver = new DependencyResolver(db);
   const taskService = new TaskService(db, eventBus, dependencyResolver, agentRegistry);

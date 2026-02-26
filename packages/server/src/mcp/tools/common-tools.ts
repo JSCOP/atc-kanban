@@ -46,6 +46,7 @@ export function registerCommonTools(server: McpServer, services: ATCServices, se
         name,
         role,
         agentType: agent_type,
+        processId: process.pid,
       });
 
       // Track this agent in the session for cleanup on process exit
