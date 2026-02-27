@@ -45,7 +45,7 @@ export function useWebSocket() {
           break;
         case 'agent:heartbeat':
           // Update agent's last heartbeat
-          const agent = agentStore.agents.find(a => a.id === message.agentId);
+          const agent = agentStore.agents.find((a) => a.id === message.agentId);
           if (agent) {
             agentStore.updateAgent({ ...agent, lastHeartbeat: message.timestamp });
           }

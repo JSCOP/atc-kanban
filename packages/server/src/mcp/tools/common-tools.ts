@@ -31,22 +31,37 @@ export class McpSessionTracker {
 /**
  * Register common MCP tools (available to all agents).
  */
-export function registerCommonTools(server: McpServer, services: ATCServices, sessionTracker: McpSessionTracker) {
+export function registerCommonTools(
+  server: McpServer,
+  services: ATCServices,
+  sessionTracker: McpSessionTracker,
+) {
   // ── register_agent ──────────────────────────────────────────────────────
   server.tool(
     'register_agent',
     'Register a new agent. role=main enforces uniqueness (only one active main allowed).',
     {
       name: z.string().describe('Agent display name'),
-      role: z.enum(['main', 'worker']).describe('Agent role: "main" (orchestrator) or "worker" (executor)'),
-      agent_type: z.string().optional().describe('Agent type: claude_code, codex, gemini, opencode, custom'),
+      role: z
+        .enum(['main', 'worker'])
+        .describe('Agent role: "main" (orchestrator) or "worker" (executor)'),
+      agent_type: z
+        .string()
+        .optional()
+        .describe('Agent type: claude_code, codex, gemini, opencode, custom'),
+      session_id: z
+        .string()
+        .optional()
+        .describe('OpenCode session ID for precise agent reconnection matching'),
     },
-    async ({ name, role, agent_type }) => {
+    async ({ name, role, agent_type, session_id }) => {
       const result = await services.agentRegistry.register({
         name,
         role,
         agentType: agent_type,
         processId: process.pid,
+        cwd: process.cwd(),
+        sessionId: session_id,
       });
 
       // Track this agent in the session for cleanup on process exit
@@ -103,7 +118,10 @@ export function registerCommonTools(server: McpServer, services: ATCServices, se
     'list_tasks',
     'List tasks with optional filters.',
     {
-      status: z.array(z.string()).optional().describe('Filter by status(es): todo, locked, in_progress, review, done, failed'),
+      status: z
+        .array(z.string())
+        .optional()
+        .describe('Filter by status(es): todo, locked, in_progress, review, done, failed'),
       priority: z.string().optional().describe('Filter by priority: critical, high, medium, low'),
       assignee: z.string().optional().describe('Filter by assigned agent ID'),
       label: z.string().optional().describe('Filter by label'),

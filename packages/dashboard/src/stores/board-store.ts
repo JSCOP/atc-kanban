@@ -63,7 +63,7 @@ export const useBoardStore = create<BoardState>((set, get) => ({
   moveTask: (taskId, newStatus) => {
     set((state) => ({
       tasks: state.tasks.map((t) =>
-        t.id === taskId ? { ...t, status: newStatus, updatedAt: new Date().toISOString() } : t
+        t.id === taskId ? { ...t, status: newStatus, updatedAt: new Date().toISOString() } : t,
       ),
     }));
   },

@@ -1,4 +1,21 @@
-import type { Task, TaskDetail, Agent, ATCEvent, BoardSummary, CreateTaskInput, UpdateTaskInput, Project, CreateProjectInput, UpdateProjectInput } from '../types';
+import type {
+  ATCEvent,
+  Agent,
+  BoardSummary,
+  CreateProjectInput,
+  CreateTaskInput,
+  DiscoveryResult,
+  DispatchResult,
+  DispatchTaskInput,
+  OpenCodeMessage,
+  Project,
+  RegisterOpenCodeAgentInput,
+  Task,
+  TaskDetail,
+  UpdateProjectInput,
+  UpdateTaskInput,
+  Workspace,
+} from '../types';
 
 const API_BASE = '/api';
 
@@ -44,8 +61,7 @@ export const api = {
     });
     return res.task;
   },
-  deleteTask: (id: string) =>
-    fetchApi<{ ok: boolean }>(`/tasks/${id}`, { method: 'DELETE' }),
+  deleteTask: (id: string) => fetchApi<{ ok: boolean }>(`/tasks/${id}`, { method: 'DELETE' }),
   forceRelease: (id: string) =>
     fetchApi<{ ok: boolean }>(`/tasks/${id}/force-release`, { method: 'POST' }),
 
@@ -54,9 +70,70 @@ export const api = {
     const res = await fetchApi<{ agents: Agent[] }>('/agents');
     return res.agents;
   },
+  disconnectAgent: (id: string) => fetchApi<{ ok: boolean }>(`/agents/${id}`, { method: 'DELETE' }),
+  renameAgent: async (id: string, name: string) => {
+    const res = await fetchApi<{ agent: Agent }>(`/agents/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ name }),
+    });
+    return res.agent;
+  },
+  registerOpenCodeAgent: async (input: RegisterOpenCodeAgentInput) => {
+    const res = await fetchApi<{ agent: Agent }>('/agents/opencode', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+    return res.agent;
+  },
+  checkAgentHealth: async (id: string) => {
+    const res = await fetchApi<{ agent: Agent }>(`/agents/${id}/health`, { method: 'POST' });
+    return res.agent;
+  },
+  getOpenCodeAgentTypes: async (id: string) => {
+    const res = await fetchApi<{ agents: { name: string; description?: string }[] }>(
+      `/agents/${id}/opencode-agents`,
+    );
+    return res.agents;
+  },
+  getSessionMessages: async (agentId: string) => {
+    const res = await fetchApi<{ messages: OpenCodeMessage[] }>(
+      `/agents/${agentId}/session-messages`,
+    );
+    return res.messages;
+  },
+  listSessions: async (agentId: string) => {
+    const res = await fetchApi<{ sessions: { id: string; title?: string; createdAt?: string }[] }>(
+      `/agents/${agentId}/sessions`,
+    );
+    return res.sessions;
+  },
+  createSession: async (agentId: string, title?: string) => {
+    const res = await fetchApi<{ session: { id: string } }>(`/agents/${agentId}/sessions`, {
+      method: 'POST',
+      body: JSON.stringify({ title }),
+    });
+    return res.session;
+  },
+  getSessionMessagesBySessionId: async (agentId: string, sessionId: string) => {
+    const res = await fetchApi<{ messages: OpenCodeMessage[] }>(
+      `/agents/${agentId}/sessions/${sessionId}/messages`,
+    );
+    return res.messages;
+  },
+  sendSessionMessage: async (agentId: string, sessionId: string, message: string, opencodeAgent?: string) => {
+    await fetchApi<{ ok: boolean }>(`/agents/${agentId}/sessions/${sessionId}/messages`, {
+      method: 'POST',
+      body: JSON.stringify({ message, opencodeAgent }),
+    });
+  },
 
   // Events
-  getEvents: async (params?: { limit?: number; type?: string; offset?: number; agentId?: string }) => {
+  getEvents: async (params?: {
+    limit?: number;
+    type?: string;
+    offset?: number;
+    agentId?: string;
+  }) => {
     const searchParams = new URLSearchParams();
     if (params?.limit) searchParams.set('limit', String(params.limit));
     if (params?.offset) searchParams.set('offset', String(params.offset));
@@ -96,8 +173,76 @@ export const api = {
     });
     return res.project;
   },
-  deleteProject: (id: string) =>
-    fetchApi<{ ok: boolean }>(`/projects/${id}`, { method: 'DELETE' }),
+  deleteProject: (id: string) => fetchApi<{ ok: boolean }>(`/projects/${id}`, { method: 'DELETE' }),
+
+  // Workspaces
+  getWorkspaces: async (status?: string) => {
+    const params = status ? `?status=${status}` : '';
+    const res = await fetchApi<{ workspaces: Workspace[] }>(`/workspaces${params}`);
+    return res.workspaces;
+  },
+
+  // Dispatch
+  dispatchTask: async (input: DispatchTaskInput) => {
+    const res = await fetchApi<{ result: DispatchResult }>('/dispatch', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+    return res.result;
+  },
+
+  // Task Assignment
+  assignAgent: async (taskId: string, agentId: string | null) => {
+    const res = await fetchApi<{ task: Task }>(`/tasks/${taskId}/assign`, {
+      method: 'POST',
+      body: JSON.stringify({ agentId }),
+    });
+    return res.task;
+  },
+
+  // Spawn
+  spawnOpenCode: async (input: { name?: string; cwd?: string; port?: number }) => {
+    return fetchApi<{ agentId: string; serverUrl: string; port: number; pid: number }>(
+      '/agents/spawn',
+      { method: 'POST', body: JSON.stringify(input) },
+    );
+  },
+  killSpawnedAgent: (id: string) =>
+    fetchApi<{ ok: boolean }>(`/agents/${id}/kill`, { method: 'POST' }),
+  getSpawnedAgents: async () => {
+    const res = await fetchApi<{ spawned: { agentId: string; pid: number }[] }>('/agents/spawned');
+    return res.spawned;
+  },
+
+  // Discovery
+  discoverAgents: async (portStart?: number, portEnd?: number) => {
+    const params = new URLSearchParams();
+    if (portStart !== undefined) params.set('portStart', String(portStart));
+    if (portEnd !== undefined) params.set('portEnd', String(portEnd));
+    const qs = params.toString();
+    return fetchApi<DiscoveryResult>(`/agents/discover${qs ? `?${qs}` : ''}`);
+  },
+  trackDiscoveredAgent: async (serverUrl: string, name?: string) => {
+    return fetchApi<{ agentId: string }>('/agents/discover/track', {
+      method: 'POST',
+      body: JSON.stringify({ serverUrl, name }),
+    });
+  },
+
+  // Admin
+  shutdownServer: () =>
+    fetchApi<{ ok: boolean; message: string }>('/admin/shutdown', { method: 'POST' }),
+  restartServer: () =>
+    fetchApi<{ ok: boolean; message: string }>('/admin/restart', { method: 'POST' }),
+  getServerInfo: () =>
+    fetchApi<{
+      pid: number;
+      uptime: number;
+      nodeVersion: string;
+      argv: string[];
+      cwd: string;
+      memoryUsage: { rss: number; heapUsed: number; heapTotal: number };
+    }>('/admin/info'),
 };
 
 // Backward compat alias

@@ -59,11 +59,13 @@ export class EventBus extends EventEmitter {
   /**
    * Poll events since a given timestamp.
    */
-  pollEvents(options: {
-    since?: string;
-    types?: EventType[];
-    limit?: number;
-  } = {}): ATCEvent[] {
+  pollEvents(
+    options: {
+      since?: string;
+      types?: EventType[];
+      limit?: number;
+    } = {},
+  ): ATCEvent[] {
     const { since, types, limit = 50 } = options;
 
     const conditions = [];

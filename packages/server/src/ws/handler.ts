@@ -3,9 +3,7 @@ import type { IncomingMessage } from 'node:http';
 import type { ATCServices } from '@atc/core';
 import { WebSocketBroadcaster } from './broadcaster.js';
 
-export function createWebSocketHandler(
-  services: ATCServices,
-): {
+export function createWebSocketHandler(services: ATCServices): {
   wss: WebSocketServer;
   broadcaster: WebSocketBroadcaster;
 } {

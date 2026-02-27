@@ -64,11 +64,16 @@ export function initializeDatabase(dbPath?: string): ReturnType<typeof drizzle> 
       name            TEXT NOT NULL,
       role            TEXT NOT NULL CHECK(role IN ('main','worker')),
       agent_type      TEXT,
+      connection_type  TEXT NOT NULL DEFAULT 'mcp' CHECK(connection_type IN ('mcp','opencode')),
+      server_url      TEXT,
       agent_token     TEXT NOT NULL UNIQUE,
       status          TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','disconnected')),
       connected_at    TEXT NOT NULL DEFAULT (datetime('now')),
       last_heartbeat  TEXT NOT NULL DEFAULT (datetime('now')),
-      process_id      INTEGER
+      process_id      INTEGER,
+      cwd             TEXT,
+      session_id      TEXT
+      spawned_pid     INTEGER
     );
 
     CREATE TABLE IF NOT EXISTS tasks (
@@ -126,6 +131,18 @@ export function initializeDatabase(dbPath?: string): ReturnType<typeof drizzle> 
       created_at  TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
+    CREATE TABLE IF NOT EXISTS workspaces (
+      id            TEXT PRIMARY KEY,
+      task_id       TEXT REFERENCES tasks(id),
+      agent_id      TEXT REFERENCES agents(id),
+      worktree_path TEXT NOT NULL,
+      branch_name   TEXT NOT NULL,
+      base_branch   TEXT NOT NULL DEFAULT 'main',
+      repo_root     TEXT NOT NULL,
+      status        TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','archived','deleted')),
+      created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
     -- Indexes
     CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
     CREATE INDEX IF NOT EXISTS idx_tasks_project ON tasks(project_id);
@@ -135,11 +152,40 @@ export function initializeDatabase(dbPath?: string): ReturnType<typeof drizzle> 
     CREATE INDEX IF NOT EXISTS idx_events_type ON events(type);
     CREATE INDEX IF NOT EXISTS idx_comments_task ON task_comments(task_id);
     CREATE INDEX IF NOT EXISTS idx_progress_task ON progress_logs(task_id);
+    CREATE INDEX IF NOT EXISTS idx_workspaces_repo ON workspaces(repo_root);
+    CREATE INDEX IF NOT EXISTS idx_workspaces_task ON workspaces(task_id);
+    CREATE INDEX IF NOT EXISTS idx_workspaces_agent ON workspaces(agent_id);
+    CREATE INDEX IF NOT EXISTS idx_workspaces_status ON workspaces(status);
 
     -- Default project
     INSERT OR IGNORE INTO projects (id, name, description)
     VALUES ('default', 'Default Project', 'Default project for ATC');
   `);
+
+  // ── Migrations ──────────────────────────────────────────────────────────────────────
+  // ALTER TABLE is safe with IF NOT EXISTS-style checks.
+  // SQLite doesn't support IF NOT EXISTS for columns, so we check pragmatically.
+  const agentColumns = raw.prepare("PRAGMA table_info('agents')").all() as { name: string }[];
+  const agentColNames = new Set(agentColumns.map((c) => c.name));
+
+  if (!agentColNames.has('process_id')) {
+    raw.exec('ALTER TABLE agents ADD COLUMN process_id INTEGER');
+  }
+  if (!agentColNames.has('cwd')) {
+    raw.exec('ALTER TABLE agents ADD COLUMN cwd TEXT');
+  }
+  if (!agentColNames.has('session_id')) {
+    raw.exec('ALTER TABLE agents ADD COLUMN session_id TEXT');
+  }
+  if (!agentColNames.has('connection_type')) {
+    raw.exec("ALTER TABLE agents ADD COLUMN connection_type TEXT NOT NULL DEFAULT 'mcp'");
+  }
+  if (!agentColNames.has('server_url')) {
+    raw.exec('ALTER TABLE agents ADD COLUMN server_url TEXT');
+  }
+  if (!agentColNames.has('spawned_pid')) {
+    raw.exec('ALTER TABLE agents ADD COLUMN spawned_pid INTEGER');
+  }
 
   return db;
 }

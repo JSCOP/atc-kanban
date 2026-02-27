@@ -4,6 +4,7 @@ import { tasks, taskLocks, progressLogs } from '../db/schema.js';
 import { getRawDb, type getConnection } from '../db/connection.js';
 import type { EventBus } from './event-bus.js';
 import type { DependencyResolver } from './dependency-resolver.js';
+import type { WorkspaceService } from './workspace-service.js';
 import type { ClaimResult, TaskDetail, TaskStatus } from '../types.js';
 import { ATCError } from '../types.js';
 
@@ -15,6 +16,7 @@ export class LockEngine {
   private dependencyResolver: DependencyResolver;
   private lockTtlMinutes: number;
   private expiryInterval: ReturnType<typeof setInterval> | null = null;
+  private workspaceService: WorkspaceService | null = null;
 
   constructor(
     db: DbType,
@@ -29,26 +31,54 @@ export class LockEngine {
   }
 
   /**
+   * Inject WorkspaceService for workspace validation during task claims.
+   * Called after service container is assembled to avoid circular deps.
+   */
+  setWorkspaceService(ws: WorkspaceService): void {
+    this.workspaceService = ws;
+  }
+
+  /**
    * Claim a task atomically using SQLite BEGIN IMMEDIATE.
    */
-  async claimTask(agentId: string, taskId: string): Promise<ClaimResult> {
+  async claimTask(agentId: string, taskId: string, agentCwd?: string): Promise<ClaimResult> {
     const raw = getRawDb();
     const lockToken = uuidv4();
     const now = new Date().toISOString();
     const expiresAt = new Date(Date.now() + this.lockTtlMinutes * 60 * 1000).toISOString();
+
+    // Workspace validation: workers must be in a registered workspace
+    let claimedWorkspace: { worktreePath: string; branchName: string } | undefined;
+    if (agentCwd && this.workspaceService) {
+      const workspace = this.workspaceService.findWorkspaceForCwd(agentCwd);
+      if (!workspace) {
+        throw new ATCError(
+          'WORKSPACE_NOT_FOUND',
+          `No registered workspace found for agent directory: ${agentCwd}. Register a workspace first.`,
+          403,
+        );
+      }
+      // Create a worktree for this task
+      const worktree = await this.workspaceService.createWorktreeForTask(
+        workspace.repoRoot,
+        workspace.baseBranch,
+        taskId,
+        agentId,
+      );
+      claimedWorkspace = { worktreePath: worktree.worktreePath, branchName: worktree.branchName };
+    }
 
     // Use raw SQLite transaction for atomicity
     const claimTxn = raw.transaction(() => {
       // 1. Check task exists
       const task = raw
         .prepare('SELECT id, status, assigned_agent_id FROM tasks WHERE id = ?')
-        .get(taskId) as { id: string; status: string; assigned_agent_id: string | null } | undefined;
+        .get(taskId) as
+        | { id: string; status: string; assigned_agent_id: string | null }
+        | undefined;
 
       if (!task) {
-        throw new ATCError(
-          'TASK_NOT_FOUND',
-          `Task ${taskId} does not exist`,
-        );
+        throw new ATCError('TASK_NOT_FOUND', `Task ${taskId} does not exist`);
       }
 
       // 2. Determine if task is claimable
@@ -91,10 +121,7 @@ export class LockEngine {
         .get(taskId) as { cnt: number };
 
       if (unmetDeps.cnt > 0) {
-        throw new ATCError(
-          'DEPENDENCY_NOT_MET',
-          `Task ${taskId} has unmet dependencies`,
-        );
+        throw new ATCError('DEPENDENCY_NOT_MET', `Task ${taskId} has unmet dependencies`);
       }
 
       // 4. Force-release existing lock if taking over from disconnected agent
@@ -120,9 +147,7 @@ export class LockEngine {
 
       // 6. Update task status
       raw
-        .prepare(
-          'UPDATE tasks SET status = ?, assigned_agent_id = ?, updated_at = ? WHERE id = ?',
-        )
+        .prepare('UPDATE tasks SET status = ?, assigned_agent_id = ?, updated_at = ? WHERE id = ?')
         .run('in_progress', agentId, now, taskId);
     });
 
@@ -138,17 +163,13 @@ export class LockEngine {
     // Build task detail
     const taskDetail = this.getTaskDetail(taskId);
 
-    return { lockToken, task: taskDetail };
+    return { lockToken, task: taskDetail, workspace: claimedWorkspace };
   }
 
   /**
    * Update task status. Requires valid lock token.
    */
-  async updateStatus(
-    lockToken: string,
-    taskId: string,
-    status: TaskStatus,
-  ): Promise<TaskDetail> {
+  async updateStatus(lockToken: string, taskId: string, status: TaskStatus): Promise<TaskDetail> {
     this.validateLock(lockToken, taskId);
     const now = new Date().toISOString();
 
@@ -170,11 +191,7 @@ export class LockEngine {
       );
     }
 
-    this.db
-      .update(tasks)
-      .set({ status, updatedAt: now })
-      .where(eq(tasks.id, taskId))
-      .run();
+    this.db.update(tasks).set({ status, updatedAt: now }).where(eq(tasks.id, taskId)).run();
 
     // If done or failed, release the lock
     if (status === 'done' || status === 'failed') {
@@ -193,7 +210,12 @@ export class LockEngine {
   /**
    * Report progress on a task. Also refreshes lock expiry.
    */
-  async reportProgress(lockToken: string, taskId: string, agentId: string, message: string): Promise<void> {
+  async reportProgress(
+    lockToken: string,
+    taskId: string,
+    agentId: string,
+    message: string,
+  ): Promise<void> {
     this.validateLock(lockToken, taskId);
     const now = new Date().toISOString();
     const newExpiresAt = new Date(Date.now() + this.lockTtlMinutes * 60 * 1000).toISOString();
@@ -249,11 +271,7 @@ export class LockEngine {
    * Force release a task (main agent action).
    */
   async forceRelease(taskId: string): Promise<void> {
-    const lock = this.db
-      .select()
-      .from(taskLocks)
-      .where(eq(taskLocks.taskId, taskId))
-      .get();
+    const lock = this.db.select().from(taskLocks).where(eq(taskLocks.taskId, taskId)).get();
 
     if (!lock) {
       throw new ATCError('NO_LOCK', `Task ${taskId} is not locked`);
@@ -340,11 +358,7 @@ export class LockEngine {
   async checkExpiredLocks(): Promise<void> {
     const now = new Date().toISOString();
 
-    const expiredLocks = this.db
-      .select()
-      .from(taskLocks)
-      .where(lt(taskLocks.expiresAt, now))
-      .all();
+    const expiredLocks = this.db.select().from(taskLocks).where(lt(taskLocks.expiresAt, now)).all();
 
     for (const lock of expiredLocks) {
       this.db.delete(taskLocks).where(eq(taskLocks.taskId, lock.taskId)).run();

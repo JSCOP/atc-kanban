@@ -1,6 +1,6 @@
 import { eq, and, inArray, like, desc } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
-import { tasks, taskDependencies, taskComments, progressLogs } from '../db/schema.js';
+import { tasks, taskDependencies, taskComments, progressLogs, workspaces } from '../db/schema.js';
 import type { getConnection } from '../db/connection.js';
 import type { EventBus } from './event-bus.js';
 import type { DependencyResolver } from './dependency-resolver.js';
@@ -90,11 +90,7 @@ export class TaskService {
     if (input.priority !== undefined) updateData.priority = input.priority;
     if (input.labels !== undefined) updateData.labels = JSON.stringify(input.labels);
 
-    this.db
-      .update(tasks)
-      .set(updateData)
-      .where(eq(tasks.id, taskId))
-      .run();
+    this.db.update(tasks).set(updateData).where(eq(tasks.id, taskId)).run();
 
     return this.getTask(taskId);
   }
@@ -106,22 +102,15 @@ export class TaskService {
     const task = this.getTask(taskId);
 
     if (['locked', 'in_progress'].includes(task.status)) {
-      throw new ATCError(
-        'TASK_IN_PROGRESS',
-        'Cannot delete a task that is locked or in progress',
-      );
+      throw new ATCError('TASK_IN_PROGRESS', 'Cannot delete a task that is locked or in progress');
     }
 
     // Delete dependencies first
-    this.db
-      .delete(taskDependencies)
-      .where(eq(taskDependencies.taskId, taskId))
-      .run();
+    this.db.delete(taskDependencies).where(eq(taskDependencies.taskId, taskId)).run();
+    this.db.delete(taskDependencies).where(eq(taskDependencies.dependsOn, taskId)).run();
 
-    this.db
-      .delete(taskDependencies)
-      .where(eq(taskDependencies.dependsOn, taskId))
-      .run();
+    // Delete associated workspaces (FK without cascade)
+    this.db.delete(workspaces).where(eq(workspaces.taskId, taskId)).run();
 
     this.db.delete(tasks).where(eq(tasks.id, taskId)).run();
   }
@@ -186,20 +175,24 @@ export class TaskService {
   /**
    * List tasks with optional filters.
    */
-  listTasks(filters: {
-    status?: TaskStatus[];
-    priority?: string;
-    assignee?: string;
-    label?: string;
-    projectId?: string;
-  } = {}): Task[] {
+  listTasks(
+    filters: {
+      status?: TaskStatus[];
+      priority?: string;
+      assignee?: string;
+      label?: string;
+      projectId?: string;
+    } = {},
+  ): Task[] {
     const conditions = [];
 
     if (filters.status && filters.status.length > 0) {
       conditions.push(inArray(tasks.status, filters.status));
     }
     if (filters.priority) {
-      conditions.push(eq(tasks.priority, filters.priority as 'critical' | 'high' | 'medium' | 'low'));
+      conditions.push(
+        eq(tasks.priority, filters.priority as 'critical' | 'high' | 'medium' | 'low'),
+      );
     }
     if (filters.assignee) {
       conditions.push(eq(tasks.assignedAgentId, filters.assignee));
@@ -273,12 +266,24 @@ export class TaskService {
 
     for (const t of allTasks) {
       switch (t.status) {
-        case 'todo': counts.todo++; break;
-        case 'locked': counts.locked++; break;
-        case 'in_progress': counts.inProgress++; break;
-        case 'review': counts.review++; break;
-        case 'done': counts.done++; break;
-        case 'failed': counts.failed++; break;
+        case 'todo':
+          counts.todo++;
+          break;
+        case 'locked':
+          counts.locked++;
+          break;
+        case 'in_progress':
+          counts.inProgress++;
+          break;
+        case 'review':
+          counts.review++;
+          break;
+        case 'done':
+          counts.done++;
+          break;
+        case 'failed':
+          counts.failed++;
+          break;
       }
     }
 

@@ -18,7 +18,7 @@ export function registerWorkerTools(server: McpServer, services: ATCServices) {
     async ({ agent_token, task_id }) => {
       const agent = validateAgentToken(services, agent_token);
 
-      const result = await services.lockEngine.claimTask(agent.id, task_id);
+      const result = await services.lockEngine.claimTask(agent.id, task_id, agent.cwd ?? undefined);
 
       return {
         content: [
@@ -28,6 +28,7 @@ export function registerWorkerTools(server: McpServer, services: ATCServices) {
               {
                 lock_token: result.lockToken,
                 task: result.task,
+                workspace: result.workspace ?? null,
               },
               null,
               2,
@@ -80,7 +81,9 @@ export function registerWorkerTools(server: McpServer, services: ATCServices) {
 
       if (!lock) {
         return {
-          content: [{ type: 'text' as const, text: JSON.stringify({ error: 'Invalid lock token' }) }],
+          content: [
+            { type: 'text' as const, text: JSON.stringify({ error: 'Invalid lock token' }) },
+          ],
           isError: true,
         };
       }

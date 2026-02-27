@@ -18,7 +18,13 @@ export interface TaskDetail extends Task {
   dependsOn: string[];
   blockedBy: string[];
   comments: { id: number; taskId: string; agentId: string; content: string; createdAt: string }[];
-  progressLogs: { id: number; taskId: string; agentId: string; message: string; createdAt: string }[];
+  progressLogs: {
+    id: number;
+    taskId: string;
+    agentId: string;
+    message: string;
+    createdAt: string;
+  }[];
 }
 
 export interface Agent {
@@ -26,10 +32,15 @@ export interface Agent {
   name: string;
   role: 'main' | 'worker';
   agentType: string | null;
+  connectionType: 'mcp' | 'opencode';
+  serverUrl: string | null;
   status: 'active' | 'disconnected';
   connectedAt: string;
   lastHeartbeat: string;
   processId: number | null;
+  cwd: string | null;
+  sessionId: string | null;
+  spawnedPid: number | null;
   currentTaskId: string | null;
   currentTaskTitle: string | null;
   tasksCompleted: number;
@@ -90,7 +101,39 @@ export interface UpdateProjectInput {
   description?: string;
 }
 
-export type WebSocketMessage = 
+export interface Workspace {
+  id: string;
+  taskId: string | null;
+  agentId: string | null;
+  worktreePath: string;
+  branchName: string;
+  baseBranch: string;
+  repoRoot: string;
+  status: 'active' | 'archived' | 'deleted';
+  createdAt: string;
+}
+
+export interface RegisterOpenCodeAgentInput {
+  name: string;
+  serverUrl: string;
+}
+
+export interface DispatchTaskInput {
+  taskId: string;
+  agentId: string;
+  prompt?: string;
+  opencodeAgent?: string;
+}
+
+export interface DispatchResult {
+  success: boolean;
+  agentId: string;
+  taskId: string;
+  sessionId: string | null;
+  message: string;
+}
+
+export type WebSocketMessage =
   | { type: 'task:created'; task: Task }
   | { type: 'task:updated'; task: Task }
   | { type: 'task:deleted'; taskId: string }
@@ -103,3 +146,45 @@ export type WebSocketMessage =
   | { type: 'event:created'; event: ATCEvent }
   | { type: 'project:created'; project: Project }
   | { type: 'project:deleted'; projectId: string }
+  | { type: 'workspace:created'; workspace: Workspace }
+  | { type: 'workspace:deleted'; workspaceId: string };
+
+// ── OpenCode Session Message Types ───────────────────────────────────────────
+
+export interface OpenCodeMessagePart {
+  type: string;
+  text?: string;
+}
+
+export interface OpenCodeMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  parts: OpenCodeMessagePart[];
+  content: string;
+  createdAt: string;
+}
+
+ // ── Discovery Types ──────────────────────────────────────────────────────────
+
+export interface DiscoveredInstance {
+  serverUrl: string;
+  port: number;
+  healthy: boolean;
+  alreadyRegistered: boolean;
+  existingAgentId: string | null;
+}
+
+export interface DetectedProcess {
+  pid: number;
+  command: string;
+  hasHttpServer: boolean;
+  extractedPort: number | null;
+  listenPorts: number[];
+}
+
+export interface DiscoveryResult {
+  discovered: DiscoveredInstance[];
+  processes: DetectedProcess[];
+  scannedRange: [number, number];
+  duration: number;
+}

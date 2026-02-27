@@ -1,6 +1,7 @@
 // ── Database ─────────────────────────────────────────────────────────────────
 export { getConnection, getRawDb, closeConnection, initializeDatabase } from './db/connection.js';
 export * as schema from './db/schema.js';
+export { eq } from 'drizzle-orm';
 
 import { initializeDatabase } from './db/connection.js';
 import { AgentRegistry, isProcessAlive } from './services/agent-registry.js';
@@ -8,9 +9,11 @@ import { DependencyResolver } from './services/dependency-resolver.js';
 // ── Services ─────────────────────────────────────────────────────────────────
 import { EventBus } from './services/event-bus.js';
 import { LockEngine } from './services/lock-engine.js';
+import { OpenCodeBridge } from './services/opencode-bridge.js';
 import { ProjectService } from './services/project-service.js';
 import { RoleManager } from './services/role-manager.js';
 import { TaskService } from './services/task-service.js';
+import { WorkspaceService } from './services/workspace-service.js';
 
 export {
   EventBus,
@@ -20,7 +23,9 @@ export {
   DependencyResolver,
   TaskService,
   LockEngine,
+  OpenCodeBridge,
   ProjectService,
+  WorkspaceService,
 };
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -36,8 +41,10 @@ export type {
   AgentRole,
   AgentStatus,
   AgentType,
+  ConnectionType,
   RegisterAgentInput,
   RegisterAgentResult,
+  RegisterOpenCodeAgentInput,
   TaskLock,
   ClaimResult,
   EventType,
@@ -46,6 +53,16 @@ export type {
   ProgressLog,
   Project,
   BoardSummary,
+  Workspace,
+  WorkspaceStatus,
+  CreateWorkspaceInput,
+  DispatchTaskInput,
+  DispatchResult,
+  OpenCodeMessage,
+  OpenCodeMessagePart,
+  OpenCodeSession,
+  SpawnOpenCodeInput,
+  SpawnOpenCodeResult,
 } from './types.js';
 
 export { ATCError } from './types.js';
@@ -59,8 +76,10 @@ export interface ATCServices {
   roleManager: RoleManager;
   dependencyResolver: DependencyResolver;
   taskService: TaskService;
+  opencodeBridge: OpenCodeBridge;
   projectService: ProjectService;
   lockEngine: LockEngine;
+  workspaceService: WorkspaceService;
 }
 
 /**
@@ -80,8 +99,11 @@ export function createServices(
   const roleManager = new RoleManager(agentRegistry);
   const dependencyResolver = new DependencyResolver(db);
   const taskService = new TaskService(db, eventBus, dependencyResolver, agentRegistry);
+  const opencodeBridge = new OpenCodeBridge(db, eventBus, taskService, agentRegistry);
   const projectService = new ProjectService(db);
   const lockEngine = new LockEngine(db, eventBus, dependencyResolver, lockTtlMinutes);
+  const workspaceService = new WorkspaceService(db, eventBus);
+  lockEngine.setWorkspaceService(workspaceService);
 
   return {
     db,
@@ -90,7 +112,9 @@ export function createServices(
     roleManager,
     dependencyResolver,
     taskService,
+    opencodeBridge,
     projectService,
     lockEngine,
+    workspaceService,
   };
 }

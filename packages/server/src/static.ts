@@ -25,13 +25,16 @@ export function setupStaticServing(app: Hono): void {
   // Serve static assets
   app.use('/*', serveStatic({ root: relRoot }));
 
-  // SPA fallback: serve index.html for non-API, non-asset routes
+  // SPA fallback: serve index.html for client-side routes only
+  // Skip API, WS, and any request with a file extension (assets that serveStatic missed)
   const indexHtml = readFileSync(resolve(dashboardDist, 'index.html'), 'utf-8');
   app.get('*', (c) => {
     const path = c.req.path;
-    if (path.startsWith('/api') || path.startsWith('/ws')) {
+    if (path.startsWith('/api') || path.startsWith('/ws') || /\.\w+$/.test(path)) {
       return c.notFound();
     }
+    // Set no-cache on HTML to prevent stale asset references after rebuilds
+    c.header('Cache-Control', 'no-cache, no-store, must-revalidate');
     return c.html(indexHtml);
   });
 }

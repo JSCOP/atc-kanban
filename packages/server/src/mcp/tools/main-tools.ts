@@ -224,4 +224,81 @@ export function registerMainTools(server: McpServer, services: ATCServices) {
       };
     },
   );
+
+  // ── create_workspace ──────────────────────────────────────────────────
+  server.tool(
+    'create_workspace',
+    'Register a git repository as a managed workspace. Main agent only.',
+    {
+      main_token: z.string().describe('Main agent token'),
+      repo_root: z.string().describe('Absolute path to git repository root'),
+      base_branch: z.string().optional().describe('Base branch name (default: main)'),
+    },
+    async ({ main_token, repo_root, base_branch }) => {
+      validateMainToken(services, main_token);
+      const workspace = await services.workspaceService.createWorkspace({
+        repoRoot: repo_root,
+        baseBranch: base_branch,
+      });
+
+      return {
+        content: [
+          {
+            type: 'text' as const,
+            text: JSON.stringify({ workspace }, null, 2),
+          },
+        ],
+      };
+    },
+  );
+
+  // ── list_workspaces ─────────────────────────────────────────────────────
+  server.tool(
+    'list_workspaces',
+    'List all managed workspaces with optional filters. Main agent only.',
+    {
+      main_token: z.string().describe('Main agent token'),
+      repo_root: z.string().optional().describe('Filter by repository root path'),
+      status: z.string().optional().describe('Filter by status: active, archived, deleted'),
+    },
+    async ({ main_token, repo_root, status }) => {
+      validateMainToken(services, main_token);
+      const workspaces = services.workspaceService.listWorkspaces({
+        repoRoot: repo_root,
+        status,
+      });
+
+      return {
+        content: [
+          {
+            type: 'text' as const,
+            text: JSON.stringify({ workspaces }, null, 2),
+          },
+        ],
+      };
+    },
+  );
+
+  // ── delete_workspace ────────────────────────────────────────────────────
+  server.tool(
+    'delete_workspace',
+    'Soft-delete a workspace and archive its worktrees. Main agent only.',
+    {
+      main_token: z.string().describe('Main agent token'),
+      workspace_id: z.string().describe('Workspace ID to delete'),
+    },
+    async ({ main_token, workspace_id }) => {
+      validateMainToken(services, main_token);
+      await services.workspaceService.deleteWorkspace(workspace_id);
+
+      return {
+        content: [
+          {
+            type: 'text' as const,
+            text: JSON.stringify({ ok: true }),
+          },
+        ],
+      };
+    },
+  );
 }

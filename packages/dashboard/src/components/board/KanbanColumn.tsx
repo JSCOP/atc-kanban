@@ -8,6 +8,7 @@ interface KanbanColumnProps {
   tasks: Task[];
   count: number;
   onTaskClick: (task: Task) => void;
+  onDispatch?: (task: Task) => void;
   isActive?: boolean;
 }
 
@@ -29,7 +30,15 @@ const statusLabels: Record<TaskStatus, string> = {
   failed: 'FAILED',
 };
 
-export function KanbanColumn({ status, title, tasks, count, onTaskClick, isActive }: KanbanColumnProps) {
+export function KanbanColumn({
+  status,
+  title,
+  tasks,
+  count,
+  onTaskClick,
+  onDispatch,
+  isActive,
+}: KanbanColumnProps) {
   const { isOver, setNodeRef } = useDroppable({
     id: status,
     disabled: status !== 'todo', // Only allow dropping in todo column
@@ -42,9 +51,13 @@ export function KanbanColumn({ status, title, tasks, count, onTaskClick, isActiv
         isOver ? 'ring-2 ring-blue-500/50 border-blue-500/50' : ''
       } ${isActive ? 'opacity-50' : ''}`}
     >
-      <div className={`p-4 border-b border-gray-800 flex items-center justify-between ${statusColors[status]}`}>
+      <div
+        className={`p-4 border-b border-gray-800 flex items-center justify-between ${statusColors[status]}`}
+      >
         <div className="flex items-center gap-2">
-          <span className="font-semibold text-sm text-gray-200">{title || statusLabels[status]}</span>
+          <span className="font-semibold text-sm text-gray-200">
+            {title || statusLabels[status]}
+          </span>
           <span className="px-2 py-0.5 bg-gray-800 rounded-full text-xs text-gray-400 font-mono">
             {count}
           </span>
@@ -57,13 +70,12 @@ export function KanbanColumn({ status, title, tasks, count, onTaskClick, isActiv
             key={task.id}
             task={task}
             onClick={() => onTaskClick(task)}
+            onDispatch={onDispatch}
             draggable={status === 'todo'}
           />
         ))}
         {tasks.length === 0 && (
-          <div className="text-center py-8 text-gray-600 text-sm">
-            No tasks
-          </div>
+          <div className="text-center py-8 text-gray-600 text-sm">No tasks</div>
         )}
       </div>
     </div>

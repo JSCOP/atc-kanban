@@ -22,11 +22,7 @@ export class DependencyResolver {
         throw new ATCError('SELF_DEPENDENCY', 'A task cannot depend on itself');
       }
 
-      const depTask = this.db
-        .select()
-        .from(tasks)
-        .where(eq(tasks.id, depId))
-        .get();
+      const depTask = this.db.select().from(tasks).where(eq(tasks.id, depId)).get();
 
       if (!depTask) {
         throw new ATCError('DEPENDENCY_NOT_FOUND', `Dependency task ${depId} not found`, 404);
@@ -44,17 +40,11 @@ export class DependencyResolver {
     }
 
     // Clear existing dependencies
-    this.db
-      .delete(taskDependencies)
-      .where(eq(taskDependencies.taskId, taskId))
-      .run();
+    this.db.delete(taskDependencies).where(eq(taskDependencies.taskId, taskId)).run();
 
     // Insert new dependencies
     for (const depId of dependsOn) {
-      this.db
-        .insert(taskDependencies)
-        .values({ taskId, dependsOn: depId })
-        .run();
+      this.db.insert(taskDependencies).values({ taskId, dependsOn: depId }).run();
     }
   }
 

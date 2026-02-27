@@ -8,3 +8,10 @@ data/
 *.tsbuildinfo
 .turbo
 nul
+test-results/
+playwright-report/
+/playwright/.cache/
+# Debug screenshots
+tests/e2e/debug-*.png
+*.png
+!packages/**/*.png

@@ -1,8 +1,9 @@
 import type { WebSocketMessage } from '../types';
 
-const WS_URL = typeof window !== 'undefined' 
-  ? `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/ws`
-  : 'ws://localhost:4000/ws';
+const WS_URL =
+  typeof window !== 'undefined'
+    ? `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/ws`
+    : 'ws://localhost:4000/ws';
 
 type MessageHandler = (message: WebSocketMessage) => void;
 
@@ -22,7 +23,7 @@ class WebSocketClient {
     }
 
     this.isIntentionallyClosed = false;
-    
+
     try {
       this.ws = new WebSocket(WS_URL);
 
@@ -34,7 +35,7 @@ class WebSocketClient {
       this.ws.onmessage = (event) => {
         try {
           const message = JSON.parse(event.data) as WebSocketMessage;
-          this.messageHandlers.forEach(handler => handler(message));
+          this.messageHandlers.forEach((handler) => handler(message));
         } catch (err) {
           console.error('[WS] Failed to parse message:', err);
         }
@@ -76,11 +77,11 @@ class WebSocketClient {
 
     const delay = Math.min(
       this.reconnectDelay * Math.pow(2, this.reconnectAttempts),
-      this.maxReconnectDelay
+      this.maxReconnectDelay,
     );
 
     console.log(`[WS] Reconnecting in ${delay}ms...`);
-    
+
     this.reconnectTimeoutId = setTimeout(() => {
       this.reconnectAttempts++;
       this.connect();

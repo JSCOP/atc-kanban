@@ -21,9 +21,11 @@ export function AgentCard({ agent }: AgentCardProps) {
   const isOnline = agent.status === 'active';
 
   return (
-    <div className={`bg-gray-800 rounded-lg p-5 border transition-colors ${
-      isOnline ? 'border-gray-700' : 'border-gray-800 opacity-60'
-    }`}>
+    <div
+      className={`bg-gray-800 rounded-lg p-5 border transition-colors ${
+        isOnline ? 'border-gray-700' : 'border-gray-800 opacity-60'
+      }`}
+    >
       <div className="flex items-center gap-3 mb-4">
         <span className="text-2xl">{isMain ? '👑' : '🔧'}</span>
         <div className="flex-1 min-w-0">

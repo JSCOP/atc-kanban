@@ -9,7 +9,7 @@ import { useWebSocket } from './hooks/useWebSocket';
 
 function AppContent() {
   useWebSocket();
-  
+
   return (
     <Routes>
       <Route path="/" element={<Layout />}>

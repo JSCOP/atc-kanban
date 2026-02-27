@@ -1,4 +1,11 @@
-import { index, integer, primaryKey, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
+import {
+  index,
+  integer,
+  primaryKey,
+  sqliteTable,
+  text,
+  uniqueIndex,
+} from 'drizzle-orm/sqlite-core';
 
 // ── Projects ────────────────────────────────────────────────────────────────
 
@@ -73,6 +80,10 @@ export const agents = sqliteTable(
     name: text('name').notNull(),
     role: text('role', { enum: ['main', 'worker'] }).notNull(),
     agentType: text('agent_type'),
+    connectionType: text('connection_type', { enum: ['mcp', 'opencode'] })
+      .notNull()
+      .default('mcp'),
+    serverUrl: text('server_url'),
     agentToken: text('agent_token').notNull().unique(),
     status: text('status', { enum: ['active', 'disconnected'] })
       .notNull()
@@ -84,6 +95,9 @@ export const agents = sqliteTable(
       .notNull()
       .$defaultFn(() => new Date().toISOString()),
     processId: integer('process_id'),
+    cwd: text('cwd'),
+    sessionId: text('session_id'),
+    spawnedPid: integer('spawned_pid'),
   },
   (table) => [
     uniqueIndex('idx_unique_active_main')
@@ -172,4 +186,31 @@ export const progressLogs = sqliteTable(
       .$defaultFn(() => new Date().toISOString()),
   },
   (table) => [index('idx_progress_task').on(table.taskId)],
+);
+
+// ── Workspaces ──────────────────────────────────────────────────────────────────
+
+export const workspaces = sqliteTable(
+  'workspaces',
+  {
+    id: text('id').primaryKey(),
+    taskId: text('task_id').references(() => tasks.id),
+    agentId: text('agent_id').references(() => agents.id),
+    worktreePath: text('worktree_path').notNull(),
+    branchName: text('branch_name').notNull(),
+    baseBranch: text('base_branch').notNull().default('main'),
+    repoRoot: text('repo_root').notNull(),
+    status: text('status', { enum: ['active', 'archived', 'deleted'] })
+      .notNull()
+      .default('active'),
+    createdAt: text('created_at')
+      .notNull()
+      .$defaultFn(() => new Date().toISOString()),
+  },
+  (table) => [
+    index('idx_workspaces_repo').on(table.repoRoot),
+    index('idx_workspaces_task').on(table.taskId),
+    index('idx_workspaces_agent').on(table.agentId),
+    index('idx_workspaces_status').on(table.status),
+  ],
 );

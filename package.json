@@ -12,10 +12,12 @@
     "db:migrate": "pnpm -F @atc/core db:migrate",
     "test": "vitest",
     "lint": "biome check .",
-    "format": "biome format --write ."
+    "format": "biome format --write .",
+    "test:e2e": "playwright test"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.0",
+    "@playwright/test": "^1.58.2",
     "concurrently": "^9.1.0",
     "typescript": "^5.7.0",
     "vitest": "^3.0.0"

@@ -31,7 +31,7 @@ export const useEventStore = create<EventState>((set, get) => ({
   fetchEvents: async (reset = false) => {
     const { filters, offset } = get();
     const currentOffset = reset ? 0 : offset;
-    
+
     set({ loading: true, error: null });
     if (reset) {
       set({ events: [], offset: 0, hasMore: true });

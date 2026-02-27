@@ -94,12 +94,47 @@ export function createTaskRoutes(services: ATCServices) {
       // Reset to todo (re-open)
       const { getRawDb } = await import('@atc/core');
       const raw = getRawDb();
-      raw.prepare('UPDATE tasks SET status = ?, assigned_agent_id = NULL, updated_at = ? WHERE id = ?')
+      raw
+        .prepare(
+          'UPDATE tasks SET status = ?, assigned_agent_id = NULL, updated_at = ? WHERE id = ?',
+        )
         .run('todo', new Date().toISOString(), taskId);
 
       await services.eventBus.publish('STATUS_CHANGED', {
         taskId,
         payload: { oldStatus: task.status, newStatus: 'todo', source: 'dashboard' },
+      });
+    }
+
+    return c.json({ task: services.taskService.getTask(taskId) });
+  });
+
+  // POST /api/tasks/:id/assign - Assign an agent to a task
+  app.post('/:id/assign', async (c) => {
+    const taskId = c.req.param('id');
+    const body = await c.req.json();
+    const { agentId } = body as { agentId: string | null };
+
+    // Validate task exists
+    const task = services.taskService.getTask(taskId);
+
+    // Validate agent exists if assigning (not unassigning)
+    if (agentId) {
+      services.agentRegistry.getById(agentId); // throws if not found
+    }
+
+    // Update the task assignment via raw DB (assignedAgentId not in UpdateTaskInput)
+    const { getRawDb } = await import('@atc/core');
+    const raw = getRawDb();
+    raw
+      .prepare('UPDATE tasks SET assigned_agent_id = ?, updated_at = ? WHERE id = ?')
+      .run(agentId, new Date().toISOString(), taskId);
+
+    if (agentId) {
+      await services.eventBus.publish('STATUS_CHANGED', {
+        taskId,
+        agentId,
+        payload: { action: 'assigned', agentId, source: 'dashboard' },
       });
     }
 

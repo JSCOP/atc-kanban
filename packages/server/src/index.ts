@@ -7,6 +7,8 @@ import { createApp } from './http/app.js';
 import { createWebSocketHandler } from './ws/handler.js';
 import { startMcpStdioServer } from './mcp/server.js';
 import { setupStaticServing } from './static.js';
+import { OpenCodeSpawner } from './services/opencode-spawner.js';
+import { OpenCodeDiscovery } from './services/opencode-discovery.js';
 
 // ── Configuration ───────────────────────────────────────────────────────────
 
@@ -36,10 +38,13 @@ const services = createServices({
 
 services.lockEngine.startExpiryChecker(30000);
 
-// ── Process health checker (PID-based) ───────────────────────────────────────
+// Run immediate health check on startup to clean stale agents from previous session
+services.agentRegistry.checkHealth().catch(console.error);
 
-const processHealthChecker = setInterval(() => {
-  services.agentRegistry.checkProcessHealth().catch(console.error);
+// ── Agent health checker (PID + OpenCode HTTP) ───────────────────────────────────
+
+const healthChecker = setInterval(() => {
+  services.agentRegistry.checkHealth().catch(console.error);
 }, 10000); // Check every 10 seconds
 
 // ── MCP Mode ────────────────────────────────────────────────────────────────
@@ -51,9 +56,13 @@ if (isMcpMode) {
     process.exit(1);
   });
 } else {
-  // ── HTTP + WebSocket Mode ───────────────────────────────────────────────
+  // ── HTTP + WebSocket Mode ───────────────────────────────────────────────────
 
-  const app = createApp(services);
+  const spawner = new OpenCodeSpawner(services);
+  const discovery = new OpenCodeDiscovery(services);
+  // Use indirect reference so shutdown can be defined after server/wss setup
+  let shutdown: () => void = () => process.exit(1);
+  const app = createApp(services, spawner, () => shutdown(), discovery);
 
   // Static file serving (production)
   setupStaticServing(app);
@@ -67,7 +76,8 @@ if (isMcpMode) {
       fetch: app.fetch,
       port: PORT,
       createServer,
-  }, (info) => {
+    },
+    (info) => {
       console.log('');
       console.log('  ╔══════════════════════════════════════════╗');
       console.log('  ║       ATC Server Running                 ║');
@@ -94,10 +104,11 @@ if (isMcpMode) {
 
   // ── Graceful shutdown ───────────────────────────────────────────────────
 
-  const shutdown = () => {
+  shutdown = () => {
     console.log('\n[ATC] Shutting down...');
+    spawner.killAll();
     services.lockEngine.stopExpiryChecker();
-    clearInterval(processHealthChecker);
+    clearInterval(healthChecker);
     wss.close();
     server.close();
     closeConnection();

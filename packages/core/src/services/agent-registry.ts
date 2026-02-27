@@ -1,8 +1,16 @@
 import { and, eq } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import type { getConnection } from '../db/connection.js';
-import { agents, taskLocks, tasks } from '../db/schema.js';
-import type { Agent, AgentInfo, RegisterAgentInput, RegisterAgentResult } from '../types.js';
+import { agents, progressLogs, taskComments, taskLocks, tasks, workspaces } from '../db/schema.js';
+import type {
+  Agent,
+  AgentInfo,
+  AgentStatus,
+  ConnectionType,
+  RegisterAgentInput,
+  RegisterAgentResult,
+  RegisterOpenCodeAgentInput,
+} from '../types.js';
 import { ATCError } from '../types.js';
 import type { EventBus } from './event-bus.js';
 
@@ -37,16 +45,73 @@ export class AgentRegistry {
   }
 
   /**
-   * Register a new agent. If role=main, enforces uniqueness.
+   * Register or reconnect an agent.
+   * - If sessionId provided → match by sessionId (most precise, for OpenCode session continuity).
+   * - Else if a disconnected agent with the same name+role exists → reactivate it (preserves ID + history).
+   * - If an active agent with the same name+role exists → check PID, reactivate if dead.
+   * - If role=main, still enforces uniqueness (only one active main).
+   * - Otherwise → create a new agent.
    */
   async register(input: RegisterAgentInput): Promise<RegisterAgentResult> {
-    const { name, role, agentType, processId } = input;
-    const agentId = uuidv4();
-    const agentToken = uuidv4();
+    const { name, role, agentType, processId, cwd, sessionId } = input;
     const now = new Date().toISOString();
 
+    // 1a. If sessionId provided, try exact session match first (most precise)
+    if (sessionId) {
+      const bySession = this.db.select().from(agents).where(eq(agents.sessionId, sessionId)).get();
+
+      if (bySession) {
+        if (bySession.status === 'active') {
+          const alive = bySession.processId ? isProcessAlive(bySession.processId) : false;
+          if (alive && bySession.processId !== (processId ?? null)) {
+            if (role === 'main') {
+              throw new ATCError('MAIN_ALREADY_ACTIVE', 'Main agent already active', 409);
+            }
+            // Different live process with same sessionId — fall through to name+role
+          } else {
+            return this.reactivateAgent(bySession.id, {
+              agentType,
+              processId,
+              cwd,
+              sessionId,
+              now,
+            });
+          }
+        } else {
+          return this.reactivateAgent(bySession.id, { agentType, processId, cwd, sessionId, now });
+        }
+      }
+    }
+
+    // 1b. Fallback: find existing agent with same name+role to reconnect
+    const existing = this.db
+      .select()
+      .from(agents)
+      .where(and(eq(agents.name, name), eq(agents.role, role)))
+      .get();
+
+    if (existing) {
+      if (existing.status === 'active') {
+        // Active agent with same name+role — check if its process is alive
+        const alive = existing.processId ? isProcessAlive(existing.processId) : false;
+        if (alive && existing.processId !== (processId ?? null)) {
+          // Different live process with same name+role
+          if (role === 'main') {
+            throw new ATCError('MAIN_ALREADY_ACTIVE', 'Main agent already active', 409);
+          }
+          // For workers, allow multiple — fall through to create new
+        } else {
+          // Same process reconnecting, or old process dead → reactivate
+          return this.reactivateAgent(existing.id, { agentType, processId, cwd, sessionId, now });
+        }
+      } else {
+        // Disconnected agent → reactivate
+        return this.reactivateAgent(existing.id, { agentType, processId, cwd, sessionId, now });
+      }
+    }
+
+    // 2. No reconnectable agent found — enforce main uniqueness
     if (role === 'main') {
-      // Check if an active main exists
       const existingMain = this.db
         .select()
         .from(agents)
@@ -54,26 +119,18 @@ export class AgentRegistry {
         .get();
 
       if (existingMain) {
-        // Check if existing main's process is still alive
-        const mainAlive = existingMain.processId ? isProcessAlive(existingMain.processId) : false; // no PID → can't verify → allow replacement
-
+        const mainAlive = existingMain.processId ? isProcessAlive(existingMain.processId) : false;
         if (mainAlive) {
           throw new ATCError('MAIN_ALREADY_ACTIVE', 'Main agent already active', 409);
         }
-
-        // Process is dead → force disconnect stale main
-        this.db
-          .update(agents)
-          .set({ status: 'disconnected' })
-          .where(eq(agents.id, existingMain.id))
-          .run();
-
-        await this.eventBus.publish('AGENT_DISCONNECTED', {
-          agentId: existingMain.id,
-          payload: { reason: 'process_dead', replacedBy: agentId },
-        });
+        // Dead main → disconnect it
+        await this.disconnectById(existingMain.id, 'process_dead');
       }
     }
+
+    // 3. Create new agent
+    const agentId = uuidv4();
+    const agentToken = uuidv4();
 
     this.db
       .insert(agents)
@@ -82,20 +139,68 @@ export class AgentRegistry {
         name,
         role,
         agentType: agentType ?? null,
+        connectionType: 'mcp',
         agentToken,
         status: 'active',
         connectedAt: now,
         lastHeartbeat: now,
         processId: processId ?? null,
+        cwd: cwd ?? null,
+        sessionId: sessionId ?? null,
       })
       .run();
 
     await this.eventBus.publish('AGENT_CONNECTED', {
       agentId,
-      payload: { name, role, agentType, processId },
+      payload: { name, role, agentType, processId, cwd, sessionId, reconnected: false },
     });
 
-    return { agentId, agentToken, role };
+    return { agentId, agentToken, role, reconnected: false };
+  }
+
+  /**
+   * Reactivate a disconnected/stale agent — preserves ID and task history.
+   */
+  private async reactivateAgent(
+    agentId: string,
+    opts: { agentType?: string; processId?: number; cwd?: string; sessionId?: string; now: string },
+  ): Promise<RegisterAgentResult> {
+    const newToken = uuidv4();
+
+    this.db
+      .update(agents)
+      .set({
+        agentToken: newToken,
+        status: 'active',
+        lastHeartbeat: opts.now,
+        processId: opts.processId ?? null,
+        cwd: opts.cwd ?? null,
+        agentType: opts.agentType ?? null,
+        sessionId: opts.sessionId ?? null,
+      })
+      .where(eq(agents.id, agentId))
+      .run();
+
+    const agent = this.db.select().from(agents).where(eq(agents.id, agentId)).get();
+
+    await this.eventBus.publish('AGENT_CONNECTED', {
+      agentId,
+      payload: {
+        name: agent!.name,
+        role: agent!.role,
+        agentType: opts.agentType,
+        processId: opts.processId,
+        cwd: opts.cwd,
+        reconnected: true,
+      },
+    });
+
+    return {
+      agentId,
+      agentToken: newToken,
+      role: agent!.role as 'main' | 'worker',
+      reconnected: true,
+    };
   }
 
   /**
@@ -168,6 +273,29 @@ export class AgentRegistry {
   }
 
   /**
+   * Remove an agent from the database entirely.
+   * If active, disconnects first (releases locks). Then deletes the row.
+   */
+  async removeById(agentId: string): Promise<void> {
+    const agent = this.db.select().from(agents).where(eq(agents.id, agentId)).get();
+    if (!agent) return;
+
+    // Disconnect first if still active (releases locks + publishes events)
+    if (agent.status === 'active') {
+      await this.disconnectById(agentId, 'manual_removal');
+    }
+
+    // Clean up all FK references before deleting the agent row
+    this.db.update(tasks).set({ assignedAgentId: null }).where(eq(tasks.assignedAgentId, agentId)).run();
+    this.db.delete(taskComments).where(eq(taskComments.agentId, agentId)).run();
+    this.db.delete(progressLogs).where(eq(progressLogs.agentId, agentId)).run();
+    this.db.update(workspaces).set({ agentId: null }).where(eq(workspaces.agentId, agentId)).run();
+
+    // Delete agent row from DB
+    this.db.delete(agents).where(eq(agents.id, agentId)).run();
+  }
+
+  /**
    * Get agent by token (validates existence + active status).
    */
   getByToken(agentToken: string): Agent {
@@ -181,17 +309,7 @@ export class AgentRegistry {
       throw new ATCError('AGENT_DISCONNECTED', 'Agent is disconnected', 403);
     }
 
-    return {
-      id: agent.id,
-      name: agent.name,
-      role: agent.role as 'main' | 'worker',
-      agentType: agent.agentType,
-      agentToken: agent.agentToken,
-      status: agent.status as 'active' | 'disconnected',
-      connectedAt: agent.connectedAt,
-      lastHeartbeat: agent.lastHeartbeat,
-      processId: agent.processId,
-    };
+    return this.mapAgent(agent);
   }
 
   /**
@@ -231,15 +349,7 @@ export class AgentRegistry {
         .all().length;
 
       return {
-        id: agent.id,
-        name: agent.name,
-        role: agent.role as 'main' | 'worker',
-        agentType: agent.agentType,
-        agentToken: agent.agentToken,
-        status: agent.status as 'active' | 'disconnected',
-        connectedAt: agent.connectedAt,
-        lastHeartbeat: agent.lastHeartbeat,
-        processId: agent.processId,
+        ...this.mapAgent(agent),
         currentTaskId,
         currentTaskTitle,
         tasksCompleted: completed,
@@ -253,19 +363,183 @@ export class AgentRegistry {
    * Uses OS-level PID checking — no heartbeat needed.
    * Agents whose process has died are disconnected and their locks released.
    */
-  async checkProcessHealth(): Promise<void> {
+  async checkHealth(): Promise<void> {
     const activeAgents = this.db.select().from(agents).where(eq(agents.status, 'active')).all();
 
     for (const agent of activeAgents) {
-      if (agent.processId == null) {
-        // No PID recorded (e.g., HTTP-mode agent) — skip PID check
-        continue;
-      }
-
-      if (!isProcessAlive(agent.processId)) {
-        // Process is dead → disconnect + release locks
-        await this.disconnectById(agent.id, 'process_dead');
+      if (agent.connectionType === 'opencode') {
+        // OpenCode agents: HTTP health check
+        if (agent.serverUrl) {
+          try {
+            const res = await fetch(`${agent.serverUrl}/global/health`, {
+              signal: AbortSignal.timeout(5000),
+            });
+            if (!res.ok) {
+              await this.disconnectById(agent.id, 'health_check_failed');
+            } else {
+              // Update heartbeat on successful health check
+              this.db
+                .update(agents)
+                .set({ lastHeartbeat: new Date().toISOString() })
+                .where(eq(agents.id, agent.id))
+                .run();
+            }
+          } catch {
+            await this.disconnectById(agent.id, 'health_check_failed');
+          }
+        }
+      } else {
+        // MCP agents: PID-based health check
+        if (agent.processId == null) continue;
+        if (!isProcessAlive(agent.processId)) {
+          await this.disconnectById(agent.id, 'process_dead');
+        }
       }
     }
+  }
+
+  /**
+   * Register an OpenCode agent from dashboard UI.
+   * Creates agent with connectionType='opencode' and serverUrl.
+   */
+  async registerOpenCodeAgent(input: RegisterOpenCodeAgentInput): Promise<Agent> {
+    const now = new Date().toISOString();
+
+    // Check for existing agent with same serverUrl to reconnect
+    const existing = this.db
+      .select()
+      .from(agents)
+      .where(eq(agents.serverUrl, input.serverUrl))
+      .get();
+
+    if (existing) {
+      // Reactivate existing agent with same serverUrl
+      const newToken = uuidv4();
+      this.db
+        .update(agents)
+        .set({
+          name: input.name,
+          agentToken: newToken,
+          status: 'active',
+          lastHeartbeat: now,
+        })
+        .where(eq(agents.id, existing.id))
+        .run();
+
+      await this.eventBus.publish('AGENT_CONNECTED', {
+        agentId: existing.id,
+        payload: { name: input.name, connectionType: 'opencode', reconnected: true },
+      });
+
+      return this.getById(existing.id);
+    }
+
+    // Create new OpenCode agent
+    const agentId = uuidv4();
+    const agentToken = uuidv4();
+
+    this.db
+      .insert(agents)
+      .values({
+        id: agentId,
+        name: input.name,
+        role: 'worker',
+        agentType: 'opencode',
+        connectionType: 'opencode',
+        serverUrl: input.serverUrl,
+        agentToken,
+        status: 'active',
+        connectedAt: now,
+        lastHeartbeat: now,
+      })
+      .run();
+
+    await this.eventBus.publish('AGENT_CONNECTED', {
+      agentId,
+      payload: { name: input.name, connectionType: 'opencode', reconnected: false },
+    });
+
+    return this.getById(agentId);
+  }
+
+  /**
+   * Check health of a specific OpenCode agent via HTTP.
+   */
+  async checkOpenCodeHealth(agentId: string): Promise<Agent> {
+    const agent = this.getById(agentId);
+    if (agent.connectionType !== 'opencode' || !agent.serverUrl) {
+      throw new ATCError('NOT_OPENCODE', 'Agent is not an OpenCode agent', 400);
+    }
+
+    try {
+      const res = await fetch(`${agent.serverUrl}/global/health`, {
+        signal: AbortSignal.timeout(5000),
+      });
+      const now = new Date().toISOString();
+      const newStatus: AgentStatus = res.ok ? 'active' : 'disconnected';
+      this.db
+        .update(agents)
+        .set({ status: newStatus, lastHeartbeat: now })
+        .where(eq(agents.id, agentId))
+        .run();
+      return { ...agent, status: newStatus, lastHeartbeat: now };
+    } catch {
+      const now = new Date().toISOString();
+      this.db
+        .update(agents)
+        .set({ status: 'disconnected', lastHeartbeat: now })
+        .where(eq(agents.id, agentId))
+        .run();
+      return { ...agent, status: 'disconnected', lastHeartbeat: now };
+    }
+  }
+
+  /**
+   * Rename an agent.
+   */
+  async renameAgent(agentId: string, newName: string): Promise<Agent> {
+    const agent = this.getById(agentId);
+
+    this.db.update(agents).set({ name: newName }).where(eq(agents.id, agentId)).run();
+
+    await this.eventBus.publish('AGENT_CONNECTED', {
+      agentId,
+      payload: { name: newName, previousName: agent.name, renamed: true },
+    });
+
+    return { ...agent, name: newName };
+  }
+
+  /**
+   * Get agent by ID.
+   */
+  getById(agentId: string): Agent {
+    const agent = this.db.select().from(agents).where(eq(agents.id, agentId)).get();
+    if (!agent) {
+      throw new ATCError('AGENT_NOT_FOUND', `Agent ${agentId} not found`, 404);
+    }
+    return this.mapAgent(agent);
+  }
+
+  /**
+   * Map a raw DB agent row to the Agent interface.
+   */
+  private mapAgent(row: typeof agents.$inferSelect): Agent {
+    return {
+      id: row.id,
+      name: row.name,
+      role: row.role as 'main' | 'worker',
+      agentType: row.agentType,
+      connectionType: (row.connectionType ?? 'mcp') as ConnectionType,
+      serverUrl: row.serverUrl ?? null,
+      agentToken: row.agentToken,
+      status: row.status as AgentStatus,
+      connectedAt: row.connectedAt,
+      lastHeartbeat: row.lastHeartbeat,
+      processId: row.processId,
+      cwd: row.cwd,
+      sessionId: row.sessionId ?? null,
+      spawnedPid: row.spawnedPid ?? null,
+    };
   }
 }

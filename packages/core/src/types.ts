@@ -44,17 +44,23 @@ export interface UpdateTaskInput {
 export type AgentRole = 'main' | 'worker';
 export type AgentStatus = 'active' | 'disconnected';
 export type AgentType = 'claude_code' | 'codex' | 'gemini' | 'opencode' | 'custom';
+export type ConnectionType = 'mcp' | 'opencode';
 
 export interface Agent {
   id: string;
   name: string;
   role: AgentRole;
   agentType: string | null;
+  connectionType: ConnectionType;
+  serverUrl: string | null;
   agentToken: string;
   status: AgentStatus;
   connectedAt: string;
   lastHeartbeat: string;
   processId: number | null;
+  cwd: string | null;
+  sessionId: string | null;
+  spawnedPid: number | null;
 }
 
 export interface AgentInfo extends Agent {
@@ -69,12 +75,20 @@ export interface RegisterAgentInput {
   role: AgentRole;
   agentType?: string;
   processId?: number;
+  cwd?: string;
+  sessionId?: string;
+}
+
+export interface RegisterOpenCodeAgentInput {
+  name: string;
+  serverUrl: string;
 }
 
 export interface RegisterAgentResult {
   agentId: string;
   agentToken: string;
   role: AgentRole;
+  reconnected?: boolean;
 }
 
 // ── Lock Types ──────────────────────────────────────────────────────────────
@@ -90,6 +104,7 @@ export interface TaskLock {
 export interface ClaimResult {
   lockToken: string;
   task: TaskDetail;
+  workspace?: { worktreePath: string; branchName: string };
 }
 
 // ── Event Types ─────────────────────────────────────────────────────────────
@@ -103,7 +118,9 @@ export type EventType =
   | 'TASK_REVIEWED'
   | 'AGENT_CONNECTED'
   | 'AGENT_DISCONNECTED'
-  | 'LOCK_EXPIRED';
+  | 'LOCK_EXPIRED'
+  | 'WORKSPACE_CREATED'
+  | 'WORKSPACE_DELETED';
 
 export interface ATCEvent {
   id: number;
@@ -160,9 +177,83 @@ export class ATCError extends Error {
   constructor(
     public code: string,
     message: string,
-    public statusCode: number = 400,
+    public statusCode = 400,
   ) {
     super(message);
     this.name = 'ATCError';
   }
+}
+
+// ── Workspace Types ───────────────────────────────────────────────────────
+
+export type WorkspaceStatus = 'active' | 'archived' | 'deleted';
+
+export interface Workspace {
+  id: string;
+  taskId: string | null;
+  agentId: string | null;
+  worktreePath: string;
+  branchName: string;
+  baseBranch: string;
+  repoRoot: string;
+  status: WorkspaceStatus;
+  createdAt: string;
+}
+
+export interface CreateWorkspaceInput {
+  repoRoot: string;
+  baseBranch?: string;
+}
+
+// ── OpenCode Dispatch Types ──────────────────────────────────────────────
+
+export interface DispatchTaskInput {
+  taskId: string;
+  agentId: string;
+  prompt?: string;
+  opencodeAgent?: string; // OpenCode agent type: 'build', 'plan', etc.
+}
+
+export interface DispatchResult {
+  success: boolean;
+  agentId: string;
+  taskId: string;
+  sessionId: string | null;
+  message: string;
+}
+
+// ── OpenCode Session Message Types ───────────────────────────────────────
+
+export interface OpenCodeMessagePart {
+  type: string;
+  text?: string;
+}
+
+export interface OpenCodeMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  parts: OpenCodeMessagePart[];
+  content: string; // flattened text from parts
+  createdAt: string;
+}
+
+export interface OpenCodeSession {
+  id: string;
+  title?: string;
+  messages: OpenCodeMessage[];
+}
+
+// ── OpenCode Spawn Types ─────────────────────────────────────────────────
+
+export interface SpawnOpenCodeInput {
+  name: string;
+  cwd: string;
+  port?: number; // 0 = random
+}
+
+export interface SpawnOpenCodeResult {
+  agentId: string;
+  serverUrl: string;
+  port: number;
+  pid: number;
 }
