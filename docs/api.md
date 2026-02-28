@@ -53,11 +53,13 @@
 | POST | `/workspaces/:id/archive` | Archive workspace and prune worktree |
 | POST | `/workspaces/:id/sync` | Rebase workspace branch onto latest base |
 | DELETE | `/workspaces/:id` | Remove worktree and delete workspace record |
-| POST | `/dispatch` | Dispatch task to OpenCode worker |
+| POST | `/dispatch` | Dispatch + auto-claim task; prompt includes `lock_token` + `task_id` |
 | GET | `/health` | Health check → `{ status: 'ok' }` |
 | POST | `/admin/shutdown` | Graceful shutdown |
-| POST | `/admin/restart` | Restart server process |
-| GET | `/admin/info` | Server process info (pid, uptime, memory) |
+|| POST | `/admin/restart` | Restart server process |
+|| GET | `/admin/info` | Server process info (pid, uptime, memory) |
+|| GET | `/fs` | List filesystem roots (drives on Windows, / on Unix) |
+|| GET | `/fs/browse` | Browse directory (`?path&showHidden=0\|1`) → entries with isGitRepo |
 
 ## MCP Tools (stdio mode, `--mcp` flag)
 

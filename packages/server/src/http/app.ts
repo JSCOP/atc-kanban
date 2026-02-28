@@ -12,6 +12,7 @@ import { createProjectRoutes } from './routes/projects.js';
 import { createTaskRoutes } from './routes/tasks.js';
 import { createWorkspaceRoutes } from './routes/workspaces.js';
 import { createAdminRoutes } from './routes/admin.js';
+import { createFsRoutes } from './routes/fs.js';
 
 export function createApp(
   services: ATCServices,
@@ -48,6 +49,7 @@ export function createApp(
   app.route('/api/board', createBoardRoutes(services));
   app.route('/api/workspaces', createWorkspaceRoutes(services));
   app.route('/api/dispatch', createDispatchRoutes(services));
+  app.route('/api/fs', createFsRoutes());
   if (shutdownFn) {
     app.route('/api/admin', createAdminRoutes(shutdownFn));
   }

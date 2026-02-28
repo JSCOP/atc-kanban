@@ -2,8 +2,6 @@ import { useEffect, useState } from 'react';
 import { api } from '../../api/client';
 import type { Agent, OpenCodeMessage, TaskDetail } from '../../types';
 import { WorkspaceInfo } from './WorkspaceInfo';
-import { api } from '../../api/client';
-import type { Agent, OpenCodeMessage, TaskDetail } from '../../types';
 
 interface TaskDetailPanelProps {
   taskId: string;

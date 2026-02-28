@@ -1,20 +1,25 @@
 import { existsSync, mkdirSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { dirname, resolve } from 'node:path';
+import { closeConnection, createServices } from '@atc/core';
 import { serve } from '@hono/node-server';
-import { createServices, closeConnection } from '@atc/core';
 import { createApp } from './http/app.js';
-import { createWebSocketHandler } from './ws/handler.js';
 import { startMcpStdioServer } from './mcp/server.js';
-import { setupStaticServing } from './static.js';
-import { OpenCodeSpawner } from './services/opencode-spawner.js';
 import { OpenCodeDiscovery } from './services/opencode-discovery.js';
+import { OpenCodeSpawner } from './services/opencode-spawner.js';
+import { setupStaticServing } from './static.js';
+import { createWebSocketHandler } from './ws/handler.js';
 
 // ── Configuration ───────────────────────────────────────────────────────────
 
-const PORT = parseInt(process.env.PORT || '4000', 10);
-const DB_PATH = process.env.DB_PATH || './data/atc.sqlite';
-const LOCK_TTL_MINUTES = parseInt(process.env.LOCK_TTL_MINUTES || '30', 10);
+const PORT = Number.parseInt(process.env.PORT || '4000', 10);
+// DB_PATH: derive from the built file location so MCP satellite processes share the same DB
+// regardless of their CWD. fileURLToPath + dirname gives the directory of this file,
+// then we navigate up to the repo root. Works for both dev (src/) and prod (dist/) paths.
+const __filename = new URL(import.meta.url).pathname.replace(/^\/([A-Z]:)/i, '$1');
+const __dirname = dirname(__filename);
+const DB_PATH = process.env.DB_PATH || resolve(__dirname, '../../../data/atc.sqlite');
+const LOCK_TTL_MINUTES = Number.parseInt(process.env.LOCK_TTL_MINUTES || '30', 10);
 // PID-based health checking replaces heartbeat-based timeout
 
 // Check if running in MCP stdio mode
@@ -34,23 +39,24 @@ const services = createServices({
   lockTtlMinutes: LOCK_TTL_MINUTES,
 });
 
-// ── Start lock expiry checker ───────────────────────────────────────────────
+// ── Background tasks (HTTP mode only) ─────────────────────────────────────
+// MCP stdio satellites must NOT run janitor loops — only the primary HTTP
+// server should manage lock expiry and agent health checks.
 
-services.lockEngine.startExpiryChecker(30000);
+let healthChecker: ReturnType<typeof setInterval> | undefined;
 
-// Run immediate health check on startup to clean stale agents from previous session
-services.agentRegistry.checkHealth().catch(console.error);
-
-// ── Agent health checker (PID + OpenCode HTTP) ───────────────────────────────────
-
-const healthChecker = setInterval(() => {
+if (!isMcpMode) {
+  services.lockEngine.startExpiryChecker(30000);
   services.agentRegistry.checkHealth().catch(console.error);
-}, 10000); // Check every 10 seconds
+  healthChecker = setInterval(() => {
+    services.agentRegistry.checkHealth().catch(console.error);
+  }, 10000);
+}
 
 // ── MCP Mode ────────────────────────────────────────────────────────────────
 
 if (isMcpMode) {
-  console.error('[ATC] Starting in MCP stdio mode...');
+  console.error(`[ATC] Starting in MCP stdio mode (DB: ${DB_PATH})...`);
   startMcpStdioServer(services).catch((error) => {
     console.error('[ATC] MCP server failed:', error);
     process.exit(1);
@@ -108,7 +114,7 @@ if (isMcpMode) {
     console.log('\n[ATC] Shutting down...');
     spawner.killAll();
     services.lockEngine.stopExpiryChecker();
-    clearInterval(healthChecker);
+    if (healthChecker) clearInterval(healthChecker);
     wss.close();
     server.close();
     closeConnection();

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useProjectStore } from '../../stores/project-store';
+import { DirectoryPickerPanel } from '../DirectoryPickerPanel';
 
 interface CreateProjectModalProps {
   isOpen: boolean;
@@ -11,6 +12,9 @@ export function CreateProjectModal({ isOpen, onClose }: CreateProjectModalProps)
   const [description, setDescription] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [repoRoot, setRepoRoot] = useState('');
+  const [baseBranch, setBaseBranch] = useState('');
+  const [showBrowser, setShowBrowser] = useState(false);
 
   const { createProject, selectProject } = useProjectStore();
 
@@ -25,12 +29,16 @@ export function CreateProjectModal({ isOpen, onClose }: CreateProjectModalProps)
       const project = await createProject({
         name: name.trim(),
         description: description.trim() || undefined,
+        repoRoot: repoRoot.trim() || undefined,
+        baseBranch: baseBranch.trim() || undefined,
       });
 
       selectProject(project.id);
 
       setName('');
       setDescription('');
+      setRepoRoot('');
+      setBaseBranch('');
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create project');
@@ -52,7 +60,7 @@ export function CreateProjectModal({ isOpen, onClose }: CreateProjectModalProps)
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={handleClose} />
 
       {/* Modal */}
-      <div className="relative bg-gray-900 border border-gray-700 rounded-xl shadow-2xl w-full max-w-lg animate-slide-in">
+      <div className="relative bg-gray-900 border border-gray-700 rounded-xl shadow-2xl w-full max-w-lg max-h-[80vh] overflow-y-auto animate-slide-in">
         <div className="flex items-center justify-between p-6 border-b border-gray-800">
           <h2 className="text-xl font-semibold text-white">Create New Project</h2>
           <button
@@ -101,6 +109,55 @@ export function CreateProjectModal({ isOpen, onClose }: CreateProjectModalProps)
               disabled={loading}
               className="w-full px-4 py-2.5 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 disabled:opacity-50 resize-none"
             />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-1.5">Repository Path</label>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={repoRoot}
+                onChange={(e) => setRepoRoot(e.target.value)}
+                placeholder="e.g., C:\\Projects\\my-repo or /home/user/projects/my-repo"
+                disabled={loading}
+                className="flex-1 px-4 py-2.5 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 disabled:opacity-50"
+              />
+              <button
+                type="button"
+                onClick={() => setShowBrowser(!showBrowser)}
+                disabled={loading}
+                className="px-3 py-2.5 bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white rounded-lg disabled:opacity-50 transition-colors text-sm font-medium shrink-0"
+              >
+                {showBrowser ? 'Close' : 'Browse'}
+              </button>
+            </div>
+            <p className="text-xs text-gray-500 mt-1">Optional. Links this project to a git repository for automatic workspace management.</p>
+            {showBrowser && (
+              <div className="mt-2">
+                <DirectoryPickerPanel
+                  isOpen={showBrowser}
+                  onSelect={(path) => {
+                    setRepoRoot(path);
+                    setShowBrowser(false);
+                  }}
+                  onClose={() => setShowBrowser(false)}
+                  initialPath={repoRoot || undefined}
+                />
+              </div>
+            )}
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-1.5">Base Branch</label>
+            <input
+              type="text"
+              value={baseBranch}
+              onChange={(e) => setBaseBranch(e.target.value)}
+              placeholder="main"
+              disabled={loading}
+              className="w-full px-4 py-2.5 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 disabled:opacity-50"
+            />
+            <p className="text-xs text-gray-500 mt-1">Default branch for creating task worktrees. Defaults to 'main' if empty.</p>
           </div>
 
           <div className="flex justify-end gap-3 pt-4">

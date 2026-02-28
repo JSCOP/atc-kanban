@@ -22,6 +22,8 @@ export function createProjectRoutes(services: ATCServices) {
     const project = services.projectService.createProject({
       name: body.name,
       description: body.description,
+      repoRoot: body.repoRoot,
+      baseBranch: body.baseBranch,
     });
     return c.json({ project }, 201);
   });
@@ -32,6 +34,8 @@ export function createProjectRoutes(services: ATCServices) {
     const project = services.projectService.updateProject(c.req.param('id'), {
       name: body.name,
       description: body.description,
+      repoRoot: body.repoRoot,
+      baseBranch: body.baseBranch,
     });
     return c.json({ project });
   });

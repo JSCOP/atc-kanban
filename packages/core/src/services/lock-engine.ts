@@ -7,6 +7,7 @@ import { ATCError } from '../types.js';
 import type { DependencyResolver } from './dependency-resolver.js';
 import type { EventBus } from './event-bus.js';
 import type { WorkspaceService } from './workspace-service.js';
+import type { ProjectService } from './project-service.js';
 
 type DbType = ReturnType<typeof getConnection>;
 
@@ -17,6 +18,7 @@ export class LockEngine {
   private lockTtlMinutes: number;
   private expiryInterval: ReturnType<typeof setInterval> | null = null;
   private workspaceService: WorkspaceService | null = null;
+  private projectService: ProjectService | null = null;
 
   constructor(
     db: DbType,
@@ -39,6 +41,14 @@ export class LockEngine {
   }
 
   /**
+   * Inject ProjectService for project-level repo resolution during task claims.
+   * Called after service container is assembled to avoid circular deps.
+   */
+  setProjectService(ps: ProjectService): void {
+    this.projectService = ps;
+  }
+
+  /**
    * Claim a task atomically using SQLite BEGIN IMMEDIATE.
    */
   async claimTask(
@@ -53,25 +63,61 @@ export class LockEngine {
     // Workspace handling based on agent's workspaceMode
     let claimedWorkspace: { worktreePath: string; branchName: string } | undefined;
     if (agent.workspaceMode === 'required' && this.workspaceService) {
-      if (!agent.cwd) {
-        throw new ATCError(
-          'WORKSPACE_NOT_FOUND',
-          'Agent has workspaceMode=required but no cwd set. Cannot resolve workspace.',
-          403,
-        );
+      // Resolve repo root: prefer project.repoRoot, fallback to agent.cwd
+      let resolvedRepoRoot: string | null = null;
+      let resolvedBaseBranch = 'main';
+
+      // Try project-level repo resolution first
+      if (this.projectService) {
+        const task = this.db.select().from(tasks).where(eq(tasks.id, taskId)).get();
+        if (task) {
+          try {
+            const project = this.projectService.getProject(task.projectId);
+            if (project.repoRoot) {
+              resolvedRepoRoot = project.repoRoot;
+              resolvedBaseBranch = project.baseBranch ?? 'main';
+            }
+          } catch {
+            // Project not found — fall through to cwd fallback
+          }
+        }
       }
-      const workspace = this.workspaceService.ensureActiveBaseWorkspace(agent.cwd);
-      if (!workspace) {
-        throw new ATCError(
-          'WORKSPACE_NOT_FOUND',
-          `No workspace found for agent directory: ${agent.cwd}. Register a workspace first.`,
-          403,
-        );
+
+      // Fallback to agent.cwd if project has no repoRoot
+      if (!resolvedRepoRoot) {
+        if (!agent.cwd) {
+          throw new ATCError(
+            'WORKSPACE_NOT_FOUND',
+            'Agent has workspaceMode=required but no cwd set and project has no linked repo.',
+            403,
+          );
+        }
+        const workspace = this.workspaceService.ensureActiveBaseWorkspace(agent.cwd);
+        if (!workspace) {
+          throw new ATCError(
+            'WORKSPACE_NOT_FOUND',
+            `No workspace found for agent directory: ${agent.cwd}. Register a workspace or link a repo to the project.`,
+            403,
+          );
+        }
+        resolvedRepoRoot = workspace.repoRoot;
+        resolvedBaseBranch = workspace.baseBranch;
+      } else {
+        // Ensure base workspace exists for project repo
+        const workspace = this.workspaceService.ensureActiveBaseWorkspace(resolvedRepoRoot);
+        if (!workspace) {
+          // Auto-create base workspace for the project repo
+          await this.workspaceService.createWorkspace({
+            repoRoot: resolvedRepoRoot,
+            baseBranch: resolvedBaseBranch,
+          });
+        }
       }
+
       // Create a worktree for this task (idempotent)
       const worktree = await this.workspaceService.createWorktreeForTask(
-        workspace.repoRoot,
-        workspace.baseBranch,
+        resolvedRepoRoot,
+        resolvedBaseBranch,
         taskId,
         agent.id,
       );

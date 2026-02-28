@@ -1,4 +1,15 @@
 ## Current
+- [x] Fix OpenCode dispatch -> claim -> review pipeline
+  - Done: `OpenCodeBridge.dispatchTask()` now auto-claims via `LockEngine.claimTask()` before prompt send, injects `lock_token`/`task_id` into dispatch prompts (appended for custom prompts), releases claim on prompt send failure, and returns `lockToken` in `DispatchResult`. Wired `opencodeBridge.setLockEngine(lockEngine)` in service container and hardened server default `DB_PATH` to `resolve('./data/atc.sqlite')`.
+  - Verification: `pnpm build` passed; LSP diagnostics clean for `packages/core/src/types.ts`, `packages/core/src/services/opencode-bridge.ts`, `packages/core/src/index.ts`, `packages/server/src/index.ts`.
+- [x] Add Vitest coverage for session reuse (core AgentRegistry + OpenCodeBridge)
+  - Done: Added `packages/core/src/services/__tests__/session-reuse.test.ts` with 10 tests covering sessionId reconnection rules, main uniqueness for live-process conflicts, sessionId persistence, and OpenCode dispatch session-reuse/new-session flows with `fetch` stubs.
+  - Verification: `npx vitest run packages/core/src/services/__tests__/session-reuse.test.ts`, `pnpm test -- --run packages/core/src/services/__tests__/session-reuse.test.ts`, `pnpm build` (all pass)
+- [x] Phase 2: Directory Browser feature for CreateProjectModal
+  - Done: Full server-assisted filesystem browser. FilesystemBrowserService (cross-platform drive/root detection, security validation, .git detection), FS API routes (GET /api/fs, GET /api/fs/browse), DirectoryPickerPanel inline component, CreateProjectModal Browse button integration.
+  - Files created: `server/services/filesystem-browser-service.ts`, `server/http/routes/fs.ts`, `dashboard/components/DirectoryPickerPanel.tsx`
+  - Files modified: `server/http/app.ts`, `dashboard/types.ts`, `dashboard/api/client.ts`, `dashboard/components/projects/CreateProjectModal.tsx`
+  - Verification: `pnpm build` passes, Playwright browser test confirmed drives listing, directory navigation, breadcrumbs, git repo detection, path selection flow
 - [ ] Investigate git worktree Windows failures (worker agent `export` command issue)
 
 ## Completed

@@ -79,8 +79,8 @@ export function registerWorkerTools(server: McpServer, services: ATCServices) {
       const { getRawDb } = await import('@atc/core');
       const raw = getRawDb();
       const lock = raw
-        .prepare('SELECT agent_id FROM task_locks WHERE lock_token = ?')
-        .get(lock_token) as { agent_id: string } | undefined;
+        .prepare('SELECT agent_id FROM task_locks WHERE lock_token = ? AND task_id = ?')
+        .get(lock_token, task_id) as { agent_id: string } | undefined;
 
       if (!lock) {
         return {

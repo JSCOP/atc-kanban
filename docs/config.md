@@ -5,7 +5,7 @@
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `PORT` | `4000` | HTTP server port |
-| `DB_PATH` | `./data/atc.sqlite` | SQLite database file path |
+| `DB_PATH` | `resolve('./data/atc.sqlite')` | SQLite database file path (default resolved to absolute path) |
 | `LOCK_TTL_MINUTES` | `30` | Task lock expiry time (minutes) |
 | `HEARTBEAT_TIMEOUT_SECONDS` | `60` | (Legacy) Heartbeat timeout — replaced by PID health check |
 | `LOG_LEVEL` | `info` | Log verbosity |

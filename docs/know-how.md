@@ -49,6 +49,7 @@
 | TUI mode has no HTTP | Only `opencode serve` or `opencode --port N` are discoverable |
 | Port scan range | Default: 4096 + 14000-14100 for OpenCode discovery |
 | Spawner tracks PIDs | Only spawned processes are killed on DELETE — manually registered agents untouched |
+| Dispatch auto-claims task | `dispatchTask` claims server-side, injects `lock_token`/`task_id`, and releases on prompt send failure |
 
 ## Task Status Transitions
 

@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../api/client';
+import { useProjectStore } from '../stores/project-store';
 import type { BoardSummary, Workspace } from '../types';
 export function SettingsPage() {
+  const { currentProject } = useProjectStore();
   const [health, setHealth] = useState<{ status: string; timestamp: string } | null>(null);
   const [summary, setSummary] = useState<BoardSummary | null>(null);
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
@@ -178,11 +180,21 @@ export function SettingsPage() {
         <div className="grid grid-cols-2 gap-4">
           <div>
             <p className="text-xs text-gray-500">Name</p>
-            <p className="mt-1 text-gray-300">Default Project</p>
+            <p className="mt-1 text-gray-300">{currentProject?.name ?? '—'}</p>
           </div>
           <div>
             <p className="text-xs text-gray-500">Project ID</p>
-            <p className="mt-1 text-gray-300 font-mono text-sm">default</p>
+            <p className="mt-1 text-gray-300 font-mono text-sm">{currentProject?.id ?? '—'}</p>
+          </div>
+          <div>
+            <p className="text-xs text-gray-500">Repository Path</p>
+            <p className="mt-1 text-gray-300 font-mono text-sm truncate" title={currentProject?.repoRoot ?? undefined}>
+              {currentProject?.repoRoot ?? 'Not linked'}
+            </p>
+          </div>
+          <div>
+            <p className="text-xs text-gray-500">Base Branch</p>
+            <p className="mt-1 text-gray-300 font-mono text-sm">{currentProject?.baseBranch ?? '—'}</p>
           </div>
         </div>
       </div>

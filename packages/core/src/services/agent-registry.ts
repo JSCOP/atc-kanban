@@ -518,6 +518,45 @@ export class AgentRegistry {
   }
 
   /**
+   * Update an agent's role (main ↔ worker).
+   * Enforces max-one-active-main invariant:
+   * - If promoting to 'main', demote any existing active main to 'worker' first.
+   */
+  async updateRole(agentId: string, role: 'main' | 'worker'): Promise<Agent> {
+    const agent = this.getById(agentId);
+
+    if (agent.role === role) {
+      return agent;
+    }
+
+    if (role === 'main') {
+      const existingMain = this.db
+        .select()
+        .from(agents)
+        .where(and(eq(agents.role, 'main'), eq(agents.status, 'active')))
+        .get();
+
+      if (existingMain && existingMain.id !== agentId) {
+        this.db.update(agents).set({ role: 'worker' }).where(eq(agents.id, existingMain.id)).run();
+
+        await this.eventBus.publish('AGENT_CONNECTED', {
+          agentId: existingMain.id,
+          payload: { name: existingMain.name, role: 'worker', demoted: true },
+        });
+      }
+    }
+
+    this.db.update(agents).set({ role }).where(eq(agents.id, agentId)).run();
+
+    await this.eventBus.publish('AGENT_CONNECTED', {
+      agentId,
+      payload: { name: agent.name, role, promoted: role === 'main' },
+    });
+
+    return { ...agent, role };
+  }
+
+  /**
    * Get agent by ID.
    */
   getById(agentId: string): Agent {

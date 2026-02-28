@@ -63,6 +63,7 @@ These pre-date the MCP convention. They run via `pnpm test:e2e` (requires server
 | File | Scope |
 |------|-------|
 | `packages/core/src/services/__tests__/new-features.test.ts` | Core services (workspace mode, admin override, activity filter) |
+| `packages/core/src/services/__tests__/session-reuse.test.ts` | Core services (agent session reconnection + OpenCode dispatch session reuse) |
 | `packages/server/src/http/routes/__tests__/new-endpoints.test.ts` | HTTP integration (admin-move, agent activity endpoints) |
 
 ## Test Gaps

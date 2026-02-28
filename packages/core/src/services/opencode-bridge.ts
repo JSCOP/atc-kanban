@@ -5,6 +5,7 @@ import { ATCError } from '../types.js';
 import type { DispatchResult, DispatchTaskInput, OpenCodeMessage } from '../types.js';
 import type { AgentRegistry } from './agent-registry.js';
 import type { EventBus } from './event-bus.js';
+import type { LockEngine } from './lock-engine.js';
 import type { TaskService } from './task-service.js';
 
 type DbType = ReturnType<typeof getConnection>;
@@ -24,6 +25,7 @@ export class OpenCodeBridge {
   private eventBus: EventBus;
   private taskService: TaskService;
   private agentRegistry: AgentRegistry;
+  private lockEngine: LockEngine | null = null;
 
   constructor(
     db: DbType,
@@ -35,6 +37,13 @@ export class OpenCodeBridge {
     this.eventBus = eventBus;
     this.taskService = taskService;
     this.agentRegistry = agentRegistry;
+  }
+
+  /**
+   * Inject LockEngine after service container assembly to avoid circular deps.
+   */
+  setLockEngine(le: LockEngine): void {
+    this.lockEngine = le;
   }
 
   /**
@@ -67,7 +76,7 @@ export class OpenCodeBridge {
 
   /**
    * Fetch session messages from an OpenCode agent.
-   * Calls GET /session/:sessionId on the OpenCode server.
+   * Calls GET /session/:sessionId/message on the OpenCode server.
    */
   async fetchSessionMessages(agentId: string): Promise<OpenCodeMessage[]> {
     const agent = this.agentRegistry.getById(agentId);
@@ -80,41 +89,35 @@ export class OpenCodeBridge {
     }
 
     try {
-      const res = await fetch(`${agent.serverUrl}/session/${agent.sessionId}`, {
+      const res = await fetch(`${agent.serverUrl}/session/${agent.sessionId}/message`, {
         signal: AbortSignal.timeout(10000),
       });
       if (!res.ok) {
-        throw new ATCError(
-          'OPENCODE_API_ERROR',
-          `Failed to fetch session: ${res.statusText}`,
-          502,
-        );
+        throw new ATCError('OPENCODE_API_ERROR', `Failed to fetch session: ${res.statusText}`, 502);
       }
 
-      const session = (await res.json()) as {
-        id: string;
-        title?: string;
-        messages?: Array<{
+      const messages = (await res.json()) as Array<{
+        info: {
           id: string;
           role: string;
-          parts?: Array<{ type: string; text?: string }>;
-          createdAt?: string;
-        }>;
-      };
+          time?: { created?: number };
+        };
+        parts?: Array<{ type: string; text?: string }>;
+      }>;
 
-      if (!session.messages) return [];
-
-      return session.messages
-        .filter((m) => m.role === 'user' || m.role === 'assistant')
+      return messages
+        .filter((m) => m.info.role === 'user' || m.info.role === 'assistant')
         .map((m) => {
           const textParts = (m.parts || []).filter((p) => p.type === 'text' && p.text);
           const content = textParts.map((p) => p.text).join('\n');
           return {
-            id: m.id,
-            role: m.role as 'user' | 'assistant',
+            id: m.info.id,
+            role: m.info.role as 'user' | 'assistant',
             parts: (m.parts || []).map((p) => ({ type: p.type, text: p.text })),
             content,
-            createdAt: m.createdAt || new Date().toISOString(),
+            createdAt: m.info.time?.created
+              ? new Date(m.info.time.created).toISOString()
+              : new Date().toISOString(),
           };
         });
     } catch (error) {
@@ -131,7 +134,9 @@ export class OpenCodeBridge {
    * List all sessions for an OpenCode agent.
    * Calls GET /session on the OpenCode server.
    */
-  async listSessions(agentId: string): Promise<{ id: string; title?: string; createdAt?: string }[]> {
+  async listSessions(
+    agentId: string,
+  ): Promise<{ id: string; title?: string; createdAt?: string }[]> {
     const agent = this.agentRegistry.getById(agentId);
     if (agent.connectionType !== 'opencode' || !agent.serverUrl) {
       throw new ATCError('NOT_OPENCODE', 'Agent is not an OpenCode agent', 400);
@@ -144,7 +149,16 @@ export class OpenCodeBridge {
       if (!res.ok) {
         throw new ATCError('OPENCODE_API_ERROR', `Failed to list sessions: ${res.statusText}`, 502);
       }
-      return (await res.json()) as { id: string; title?: string; createdAt?: string }[];
+      const raw = (await res.json()) as Array<{
+        id: string;
+        title?: string;
+        time?: { created?: number; updated?: number };
+      }>;
+      return raw.map((s) => ({
+        id: s.id,
+        title: s.title,
+        createdAt: s.time?.created ? new Date(s.time.created).toISOString() : undefined,
+      }));
     } catch (error) {
       if (error instanceof ATCError) throw error;
       throw new ATCError(
@@ -173,7 +187,11 @@ export class OpenCodeBridge {
         signal: AbortSignal.timeout(10000),
       });
       if (!res.ok) {
-        throw new ATCError('OPENCODE_API_ERROR', `Failed to create session: ${res.statusText}`, 502);
+        throw new ATCError(
+          'OPENCODE_API_ERROR',
+          `Failed to create session: ${res.statusText}`,
+          502,
+        );
       }
       const session = (await res.json()) as { id: string };
 
@@ -262,41 +280,35 @@ export class OpenCodeBridge {
     }
 
     try {
-      const res = await fetch(`${agent.serverUrl}/session/${sessionId}`, {
+      const res = await fetch(`${agent.serverUrl}/session/${sessionId}/message`, {
         signal: AbortSignal.timeout(10000),
       });
       if (!res.ok) {
-        throw new ATCError(
-          'OPENCODE_API_ERROR',
-          `Failed to fetch session: ${res.statusText}`,
-          502,
-        );
+        throw new ATCError('OPENCODE_API_ERROR', `Failed to fetch session: ${res.statusText}`, 502);
       }
 
-      const session = (await res.json()) as {
-        id: string;
-        title?: string;
-        messages?: Array<{
+      const messages = (await res.json()) as Array<{
+        info: {
           id: string;
           role: string;
-          parts?: Array<{ type: string; text?: string }>;
-          createdAt?: string;
-        }>;
-      };
+          time?: { created?: number };
+        };
+        parts?: Array<{ type: string; text?: string }>;
+      }>;
 
-      if (!session.messages) return [];
-
-      return session.messages
-        .filter((m) => m.role === 'user' || m.role === 'assistant')
+      return messages
+        .filter((m) => m.info.role === 'user' || m.info.role === 'assistant')
         .map((m) => {
           const textParts = (m.parts || []).filter((p) => p.type === 'text' && p.text);
           const content = textParts.map((p) => p.text).join('\n');
           return {
-            id: m.id,
-            role: m.role as 'user' | 'assistant',
+            id: m.info.id,
+            role: m.info.role as 'user' | 'assistant',
             parts: (m.parts || []).map((p) => ({ type: p.type, text: p.text })),
             content,
-            createdAt: m.createdAt || new Date().toISOString(),
+            createdAt: m.info.time?.created
+              ? new Date(m.info.time.created).toISOString()
+              : new Date().toISOString(),
           };
         });
     } catch (error) {
@@ -335,32 +347,66 @@ export class OpenCodeBridge {
       );
     }
 
-    const prompt =
-      input.prompt ||
-      `You have been assigned a task from the Agent Task Coordinator (ATC). ` +
-        `Claim task "${task.title}" (ID: ${task.id}) and work on it. ` +
-        (task.description ? `Description: ${task.description}. ` : '') +
-        `Use the ATC MCP tools to: 1) claim_task, 2) report_progress as you work, ` +
-        `3) update_status to 'review' or 'done' when complete.`;
-
     try {
-      // Create a session on the OpenCode server
-      const sessionRes = await fetch(`${agent.serverUrl}/session`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: tagSessionTitle(`ATC: ${task.title}`, agent.name) }),
-        signal: AbortSignal.timeout(10000),
-      });
+      let sessionIdToUse: string;
 
-      if (!sessionRes.ok) {
-        throw new ATCError(
-          'OPENCODE_SESSION_ERROR',
-          `Failed to create session: ${sessionRes.statusText}`,
-          502,
-        );
+      if (input.sessionId) {
+        // Validate the existing session is reachable
+        const validateRes = await fetch(`${agent.serverUrl}/session/${input.sessionId}`, {
+          signal: AbortSignal.timeout(5000),
+        });
+        if (!validateRes.ok) {
+          throw new ATCError(
+            'OPENCODE_SESSION_NOT_FOUND',
+            `Session ${input.sessionId} not found or unreachable (${validateRes.status})`,
+            400,
+          );
+        }
+        sessionIdToUse = input.sessionId;
+      } else {
+        // Create a new session on the OpenCode server
+        const sessionRes = await fetch(`${agent.serverUrl}/session`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title: tagSessionTitle(`ATC: ${task.title}`, agent.name) }),
+          signal: AbortSignal.timeout(10000),
+        });
+
+        if (!sessionRes.ok) {
+          throw new ATCError(
+            'OPENCODE_SESSION_ERROR',
+            `Failed to create session: ${sessionRes.statusText}`,
+            502,
+          );
+        }
+
+        const session = (await sessionRes.json()) as { id: string };
+        sessionIdToUse = session.id;
       }
 
-      const session = (await sessionRes.json()) as { id: string };
+      if (!this.lockEngine) {
+        throw new ATCError('LOCK_ENGINE_NOT_CONFIGURED', 'Lock engine is not configured', 500);
+      }
+
+      const claimResult = await this.lockEngine!.claimTask(
+        { id: agent.id, cwd: agent.cwd, workspaceMode: agent.workspaceMode },
+        input.taskId,
+      );
+
+      const lockCredentials =
+        `The task has already been claimed for you. Use the ATC MCP tools with these credentials:\n` +
+        `- lock_token: ${claimResult.lockToken}\n` +
+        `- task_id: ${task.id}\n` +
+        `To: 1) report_progress(lock_token, task_id, message) as you work, ` +
+        `2) update_status(lock_token, task_id, 'review') or ` +
+        `update_status(lock_token, task_id, 'done') when complete.\n` +
+        `Do NOT call claim_task - the task is already claimed.`;
+
+      const prompt = input.prompt
+        ? `${input.prompt}\n\n${lockCredentials}`
+        : `You have been assigned task "${task.title}" (ID: ${task.id}) from the Agent Task Coordinator (ATC).\n` +
+          (task.description ? `Description: ${task.description}.\n` : '') +
+          lockCredentials;
 
       // Build the message body with optional agent type (build/plan/etc.)
       const messageBody: Record<string, unknown> = {
@@ -370,20 +416,29 @@ export class OpenCodeBridge {
         messageBody.agent = input.opencodeAgent;
       }
 
-      // Send the prompt asynchronously (don't wait for AI response)
-      const promptRes = await fetch(`${agent.serverUrl}/session/${session.id}/prompt_async`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(messageBody),
-        signal: AbortSignal.timeout(10000),
-      });
+      try {
+        // Send the prompt asynchronously (don't wait for AI response)
+        const promptRes = await fetch(`${agent.serverUrl}/session/${sessionIdToUse}/prompt_async`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(messageBody),
+          signal: AbortSignal.timeout(10000),
+        });
 
-      if (!promptRes.ok) {
-        throw new ATCError(
-          'OPENCODE_PROMPT_ERROR',
-          `Failed to send prompt: ${promptRes.statusText}`,
-          502,
+        if (!promptRes.ok) {
+          throw new ATCError(
+            'OPENCODE_PROMPT_ERROR',
+            `Failed to send prompt: ${promptRes.statusText}`,
+            502,
+          );
+        }
+      } catch (error) {
+        await this.lockEngine!.releaseTask(
+          claimResult.lockToken,
+          input.taskId,
+          'Dispatch prompt failed',
         );
+        throw error;
       }
 
       // Update agent session tracking
@@ -391,7 +446,7 @@ export class OpenCodeBridge {
       this.db
         .update(agents)
         .set({
-          sessionId: session.id,
+          sessionId: sessionIdToUse,
           lastHeartbeat: now,
         })
         .where(eq(agents.id, input.agentId))
@@ -411,8 +466,11 @@ export class OpenCodeBridge {
         success: true,
         agentId: input.agentId,
         taskId: input.taskId,
-        sessionId: session.id,
-        message: `Task dispatched to ${agent.name}`,
+        sessionId: sessionIdToUse,
+        message: input.sessionId
+          ? `Task dispatched to ${agent.name} (reusing session)`
+          : `Task dispatched to ${agent.name}`,
+        lockToken: claimResult.lockToken,
       };
     } catch (error) {
       if (error instanceof ATCError) throw error;

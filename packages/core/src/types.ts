@@ -161,6 +161,8 @@ export interface Project {
   id: string;
   name: string;
   description: string | null;
+  repoRoot: string | null;
+  baseBranch: string | null;
   createdAt: string;
 }
 
@@ -229,6 +231,7 @@ export interface DispatchTaskInput {
   agentId: string;
   prompt?: string;
   opencodeAgent?: string; // OpenCode agent type: 'build', 'plan', etc.
+  sessionId?: string; // If set, reuse this existing OpenCode session instead of creating a new one
 }
 
 export interface DispatchResult {
@@ -237,6 +240,7 @@ export interface DispatchResult {
   taskId: string;
   sessionId: string | null;
   message: string;
+  lockToken?: string;
 }
 
 // ── OpenCode Session Message Types ───────────────────────────────────────

@@ -2,6 +2,16 @@ import { useEffect, useState } from 'react';
 import { apiClient } from '../../api/client';
 import type { Agent, Task } from '../../types';
 
+function timeAgo(dateStr: string): string {
+  const seconds = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
+  if (seconds < 60) return 'just now';
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
 interface DispatchDialogProps {
   isOpen: boolean;
   onClose: () => void;
@@ -20,6 +30,9 @@ export function DispatchDialog({ isOpen, onClose, task, onSuccess }: DispatchDia
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [sessions, setSessions] = useState<{ id: string; title?: string; createdAt?: string }[]>([]);
+  const [selectedSessionId, setSelectedSessionId] = useState('');
+  const [sessionsLoading, setSessionsLoading] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -59,6 +72,25 @@ export function DispatchDialog({ isOpen, onClose, task, onSuccess }: DispatchDia
   }, [selectedAgentId]);
 
   useEffect(() => {
+    if (selectedAgentId) {
+      setSessionsLoading(true);
+      apiClient.listSessions(selectedAgentId)
+        .then((sess) => {
+          setSessions(sess);
+          setSelectedSessionId('');
+        })
+        .catch(() => {
+          setSessions([]);
+          setSelectedSessionId('');
+        })
+        .finally(() => setSessionsLoading(false));
+    } else {
+      setSessions([]);
+      setSelectedSessionId('');
+    }
+  }, [selectedAgentId]);
+
+  useEffect(() => {
     if (!isOpen) {
       setSelectedAgentId('');
       setSelectedOpencodeAgent('');
@@ -66,6 +98,8 @@ export function DispatchDialog({ isOpen, onClose, task, onSuccess }: DispatchDia
       setError(null);
       setSuccess(null);
       setOpencodeAgentTypes([]);
+      setSessions([]);
+      setSelectedSessionId('');
     }
   }, [isOpen]);
 
@@ -88,6 +122,7 @@ export function DispatchDialog({ isOpen, onClose, task, onSuccess }: DispatchDia
         agentId: selectedAgentId,
         prompt: customPrompt.trim() || undefined,
         opencodeAgent: selectedOpencodeAgent || undefined,
+        sessionId: selectedSessionId || undefined,
       });
 
       if (result.success) {
@@ -209,6 +244,33 @@ export function DispatchDialog({ isOpen, onClose, task, onSuccess }: DispatchDia
                   </option>
                 ))}
               </select>
+            </div>
+          )}
+
+          {selectedAgentId && (
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-1.5">
+                Session
+              </label>
+              <select
+                value={selectedSessionId}
+                onChange={(e) => setSelectedSessionId(e.target.value)}
+                disabled={loading || sessionsLoading}
+                className="w-full px-4 py-2.5 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-blue-500 disabled:opacity-50"
+              >
+                <option value="">New session (recommended)</option>
+                {sessions.map((sess) => (
+                  <option key={sess.id} value={sess.id}>
+                    {sess.title || 'Untitled'} ({sess.createdAt ? timeAgo(sess.createdAt) : 'unknown'})
+                    {sess.id === selectedAgent?.sessionId ? ' (active)' : ''}
+                  </option>
+                ))}
+              </select>
+              {selectedSessionId && (
+                <p className="text-xs text-amber-400 mt-1">
+                  ⚠ Reusing a session will mix context from previous conversations.
+                </p>
+              )}
             </div>
           )}
 

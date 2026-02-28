@@ -107,6 +107,9 @@ export function createServices(
   const lockEngine = new LockEngine(db, eventBus, dependencyResolver, lockTtlMinutes);
   const workspaceService = new WorkspaceService(db, eventBus);
   lockEngine.setWorkspaceService(workspaceService);
+  lockEngine.setProjectService(projectService);
+  projectService.setWorkspaceService(workspaceService);
+  opencodeBridge.setLockEngine(lockEngine);
 
   return {
     db,

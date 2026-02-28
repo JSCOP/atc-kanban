@@ -21,8 +21,8 @@ SQLite (better-sqlite3, WAL mode)
 | Package | Runtime | Purpose | Entry |
 |---------|---------|---------|-------|
 | `core` | Node | DB schema (9 tables), 9 domain services, types, ATCError | `src/index.ts` → `createServices()` |
-| `server` | Node | REST API (8 route files), WebSocket broadcast, MCP stdio, OpenCode spawner/discovery | `src/index.ts` |
-| `dashboard` | Browser | Kanban board, agent management, event log, task detail | `src/main.tsx` |
+| `server` | Node | REST API (9 route files), WebSocket broadcast, MCP stdio, FS browser, OpenCode spawner/discovery | `src/index.ts` |
+| `dashboard` | Browser | Kanban board, agent management, event log, task detail, directory picker | `src/main.tsx` |
 
 ## Server Dual-Mode Architecture
 

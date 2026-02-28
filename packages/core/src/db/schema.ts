@@ -13,6 +13,8 @@ export const projects = sqliteTable('projects', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
   description: text('description'),
+  repoRoot: text('repo_root'),
+  baseBranch: text('base_branch').default('main'),
   createdAt: text('created_at')
     .notNull()
     .default(new Date().toISOString())

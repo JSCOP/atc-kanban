@@ -2,11 +2,13 @@ import type {
   ATCEvent,
   Agent,
   BoardSummary,
+  BrowseResult,
   CreateProjectInput,
   CreateTaskInput,
   DiscoveryResult,
   DispatchResult,
   DispatchTaskInput,
+  FsRoot,
   OpenCodeMessage,
   Project,
   RegisterOpenCodeAgentInput,
@@ -84,6 +86,13 @@ export const api = {
       body: JSON.stringify({ name }),
     });
     return res.agent;
+  },
+  async updateAgentRole(agentId: string, role: 'main' | 'worker'): Promise<Agent> {
+    const data = await fetchApi<{ agent: Agent }>(`/agents/${agentId}/role`, {
+      method: 'PATCH',
+      body: JSON.stringify({ role }),
+    });
+    return data.agent;
   },
   registerOpenCodeAgent: async (input: RegisterOpenCodeAgentInput) => {
     const res = await fetchApi<{ agent: Agent }>('/agents/opencode', {
@@ -262,6 +271,18 @@ export const api = {
       cwd: string;
       memoryUsage: { rss: number; heapUsed: number; heapTotal: number };
     }>('/admin/info'),
+
+  // Filesystem
+  getFsRoots: async () => {
+    const res = await fetchApi<{ roots: FsRoot[] }>('/fs');
+    return res.roots;
+  },
+  browsePath: async (dirPath: string, showHidden?: boolean) => {
+    const params = new URLSearchParams({ path: dirPath });
+    if (showHidden) params.set('showHidden', '1');
+    const res = await fetchApi<BrowseResult>(`/fs/browse?${params.toString()}`);
+    return res;
+  },
 };
 
 // Backward compat alias

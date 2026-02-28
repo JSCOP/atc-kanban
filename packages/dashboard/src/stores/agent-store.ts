@@ -23,6 +23,7 @@ interface AgentState {
   scanForAgents: () => Promise<void>;
   trackDiscoveredAgent: (serverUrl: string, name?: string) => Promise<void>;
   renameAgent: (agentId: string, newName: string) => Promise<void>;
+  updateAgentRole: (agentId: string, role: 'main' | 'worker') => Promise<void>;
 }
 
 export const useAgentStore = create<AgentState>((set, get) => ({
@@ -143,5 +144,15 @@ export const useAgentStore = create<AgentState>((set, get) => ({
     } catch (err) {
       set({ error: err instanceof Error ? err.message : 'Failed to rename agent' });
     }
+  },
+
+  updateAgentRole: async (agentId, role) => {
+    const updated = await apiClient.updateAgentRole(agentId, role);
+    set((state) => ({
+      agents: state.agents.map((a) => (a.id === agentId ? { ...a, ...updated } :
+        // If promoting to main, demote other main agents
+        role === 'main' && a.role === 'main' ? { ...a, role: 'worker' as const } : a
+      )),
+    }));
   },
 }));

@@ -88,17 +88,23 @@ export interface Project {
   id: string;
   name: string;
   description: string | null;
+  repoRoot: string | null;
+  baseBranch: string | null;
   createdAt: string;
 }
 
 export interface CreateProjectInput {
   name: string;
   description?: string;
+  repoRoot?: string;
+  baseBranch?: string;
 }
 
 export interface UpdateProjectInput {
   name?: string;
   description?: string;
+  repoRoot?: string;
+  baseBranch?: string;
 }
 
 export interface Workspace {
@@ -123,6 +129,7 @@ export interface DispatchTaskInput {
   agentId: string;
   prompt?: string;
   opencodeAgent?: string;
+  sessionId?: string;
 }
 
 export interface DispatchResult {
@@ -187,4 +194,26 @@ export interface DiscoveryResult {
   processes: DetectedProcess[];
   scannedRange: [number, number];
   duration: number;
+}
+
+// ── Filesystem Browser Types ────────────────────────────────────────────────
+
+export interface FsRoot {
+  path: string;
+  label: string;
+  kind: 'drive' | 'root';
+}
+
+export interface FsEntry {
+  name: string;
+  path: string;
+  isDirectory: boolean;
+  isGitRepo: boolean;
+  size?: number;
+}
+
+export interface BrowseResult {
+  path: string;
+  parent: string | null;
+  entries: FsEntry[];
 }

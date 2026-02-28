@@ -191,5 +191,15 @@ export function initializeDatabase(dbPath?: string): ReturnType<typeof drizzle> 
     raw.exec("ALTER TABLE agents ADD COLUMN workspace_mode TEXT NOT NULL DEFAULT 'disabled'");
   }
 
+  // ── Project migrations ──────────────────────────────────────────────────────
+  const projectColumns = raw.prepare("PRAGMA table_info('projects')").all() as { name: string }[];
+  const projectColNames = new Set(projectColumns.map((c) => c.name));
+  if (!projectColNames.has('repo_root')) {
+    raw.exec('ALTER TABLE projects ADD COLUMN repo_root TEXT');
+  }
+  if (!projectColNames.has('base_branch')) {
+    raw.exec("ALTER TABLE projects ADD COLUMN base_branch TEXT DEFAULT 'main'");
+  }
+
   return db;
 }

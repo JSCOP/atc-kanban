@@ -164,13 +164,7 @@ function AgentCard({
           >
             {agent.connectionType.toUpperCase()}
           </span>
-          <button
-            onClick={() => onRemove(agent.id)}
-            className="text-xs px-2.5 py-1 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors cursor-pointer"
-            title={isActive ? 'Disconnect and remove agent' : 'Remove agent'}
-          >
-            {isActive ? 'Disconnect' : 'Remove'}
-          </button>
+
           <div className={`w-2 h-2 rounded-full ${statusColors[agent.status]}`} />
           <span className={`text-sm ${isActive ? 'text-green-400' : 'text-red-400'}`}>
             {statusText[agent.status]}
@@ -187,7 +181,7 @@ function AgentCard({
         </div>
       )}
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-4 border-t border-gray-800">
+      <div className="grid grid-cols-2 gap-4 pt-4 border-t border-gray-800">
         <div>
           <p className="text-2xl font-bold text-white">{agent.tasksCompleted}</p>
           <p className="text-xs text-gray-500">Completed</p>
@@ -196,46 +190,7 @@ function AgentCard({
           <p className="text-2xl font-bold text-red-400">{agent.tasksFailed}</p>
           <p className="text-xs text-gray-500">Failed</p>
         </div>
-        {isOpenCode ? (
-          <>
-            <div>
-              <p className="text-2xl font-bold text-white">{extractPort(agent.serverUrl)}</p>
-              <p className="text-xs text-gray-500">Port</p>
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <p
-                  className="text-sm font-mono text-gray-400 truncate max-w-[120px]"
-                  title={agent.serverUrl ?? undefined}
-                >
-                  {agent.serverUrl ?? '—'}
-                </p>
-                {agent.serverUrl && (
-                  <button
-                    onClick={() => {
-                      navigator.clipboard.writeText(agent.serverUrl);
-                      setCopied(true);
-                      setTimeout(() => setCopied(false), 2000);
-                    }}
-                    className="p-1 text-gray-500 hover:text-gray-300 hover:bg-gray-800 rounded transition-colors cursor-pointer"
-                    title="Copy URL"
-                  >
-                    {copied ? (
-                      <svg className="w-3 h-3 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                      </svg>
-                    ) : (
-                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                      </svg>
-                    )}
-                  </button>
-                )}
-              </div>
-              <p className="text-xs text-gray-500">Server URL</p>
-            </div>
-          </>
-        ) : (
+        {!isOpenCode && (
           <>
             <div>
               <p className="text-sm font-mono text-gray-400">{agent.processId ?? '—'}</p>
@@ -253,6 +208,33 @@ function AgentCard({
           </>
         )}
       </div>
+
+      {isOpenCode && agent.serverUrl && (
+        <div className="mt-3 flex items-center gap-2">
+          <p className="text-xs text-gray-500">Server URL</p>
+          <p className="text-sm font-mono text-gray-400">{agent.serverUrl}</p>
+          <button
+            onClick={() => {
+              navigator.clipboard.writeText(agent.serverUrl);
+              setCopied(true);
+              setTimeout(() => setCopied(false), 2000);
+            }}
+            className="p-1 text-gray-500 hover:text-gray-300 hover:bg-gray-800 rounded transition-colors cursor-pointer"
+            title="Copy URL"
+          >
+            {copied ? (
+              <svg className="w-3 h-3 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+            ) : (
+              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+              </svg>
+            )}
+          </button>
+        </div>
+      )}
+
 
       {/* Activity button — available for all agents */}
       {onActivity && (
@@ -275,32 +257,40 @@ function AgentCard({
         </p>
       )}
 
-      {isOpenCode && onHealthCheck && (
-        <div className="mt-4 pt-4 border-t border-gray-800 flex items-center gap-2">
+      <div className="mt-4 pt-4 border-t border-gray-800 flex items-center gap-2">
+        {isOpenCode && onHealthCheck && (
           <button
             onClick={() => onHealthCheck(agent.id)}
             className="text-xs px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg transition-colors"
           >
             Health Check
           </button>
-          {isActive && onChat && (
-            <button
-              onClick={() => onChat(agent.id)}
-              className="text-xs px-3 py-1.5 bg-purple-600 hover:bg-purple-500 text-white rounded-lg transition-colors flex items-center gap-1"
-            >
-              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
-                />
-              </svg>
-              Chat
-            </button>
-          )}
-        </div>
-      )}
+        )}
+        {isActive && onChat && isOpenCode && (
+          <button
+            onClick={() => onChat(agent.id)}
+            className="text-xs px-3 py-1.5 bg-purple-600 hover:bg-purple-500 text-white rounded-lg transition-colors flex items-center gap-1"
+          >
+            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+              />
+            </svg>
+            Chat
+          </button>
+        )}
+        <div className="flex-1" />
+        <button
+          onClick={() => onRemove(agent.id)}
+          className="text-xs px-3 py-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors cursor-pointer"
+          title={isActive ? 'Disconnect and remove agent' : 'Remove agent'}
+        >
+          {isActive ? 'Disconnect' : 'Remove'}
+      </button>
+      </div>
     </div>
   );
 }
@@ -468,6 +458,7 @@ export function AgentsPage() {
     scanForAgents,
     trackDiscoveredAgent,
     renameAgent,
+    updateAgentRole,
   } = useAgentStore();
   const [registerLoading, setRegisterLoading] = useState(false);
   const [spawnLoading, setSpawnLoading] = useState(false);
@@ -527,6 +518,10 @@ export function AgentsPage() {
     await renameAgent(agentId, newName);
   };
 
+  const handleRoleChange = async (agentId: string, role: 'main' | 'worker') => {
+    await updateAgentRole(agentId, role);
+  };
+
   const unregisteredDiscovered = discoveredInstances.filter((d) => !d.alreadyRegistered);
 
   // TUI-only processes: running but no HTTP server (can't be tracked)
@@ -534,7 +529,7 @@ export function AgentsPage() {
 
   const mainAgent = agents.find((a) => a.role === 'main');
   const workerAgents = agents.filter((a) => a.role === 'worker' && a.connectionType === 'mcp');
-  const opencodeAgents = agents.filter((a) => a.connectionType === 'opencode');
+  const opencodeAgents = agents.filter((a) => a.connectionType === 'opencode' && a.role !== 'main');
 
   return (
     <div className="space-y-6">
@@ -591,11 +586,17 @@ export function AgentsPage() {
         </div>
       ) : (
         <>
-          {mainAgent && (
+{mainAgent && (
             <div>
               <h2 className="text-lg font-semibold text-white mb-4">Main Agent</h2>
               <div className="max-w-md">
                 <AgentCard agent={mainAgent} onRemove={removeAgentApi} onRename={handleRename} onActivity={handleActivity} />
+                <button
+                  onClick={() => handleRoleChange(mainAgent.id, 'worker')}
+                  className="mt-2 w-full px-3 py-1.5 bg-gray-600/20 hover:bg-gray-600/30 text-gray-400 text-xs font-medium rounded-lg transition-colors border border-gray-600/30"
+                >
+                  ⬇ Demote to Worker
+                </button>
               </div>
             </div>
           )}
@@ -620,15 +621,24 @@ export function AgentsPage() {
               </h2>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {opencodeAgents.map((agent) => (
-                  <AgentCard
-                    key={agent.id}
-                    agent={agent}
-                    onRemove={removeAgentApi}
-                    onHealthCheck={handleHealthCheck}
-                    onChat={handleChat}
-                    onRename={handleRename}
-                    onActivity={handleActivity}
-                  />
+                  <div key={agent.id}>
+                    <AgentCard
+                      agent={agent}
+                      onRemove={removeAgentApi}
+                      onHealthCheck={handleHealthCheck}
+                      onChat={handleChat}
+                      onRename={handleRename}
+                      onActivity={handleActivity}
+                    />
+                    {agent.status === 'active' && (
+                      <button
+                        onClick={() => handleRoleChange(agent.id, 'main')}
+                        className="mt-2 w-full px-3 py-1.5 bg-amber-600/20 hover:bg-amber-600/30 text-amber-400 text-xs font-medium rounded-lg transition-colors border border-amber-600/30"
+                      >
+                        ⬆ Promote to Main Agent
+                      </button>
+                    )}
+                  </div>
                 ))}
               </div>
             </div>

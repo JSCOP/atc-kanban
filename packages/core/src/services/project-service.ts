@@ -1,17 +1,28 @@
-import { eq } from 'drizzle-orm';
+import { normalize } from 'node:path';
+import { and, eq, isNotNull } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import type { getConnection } from '../db/connection.js';
 import { projects, tasks } from '../db/schema.js';
 import type { Project } from '../types.js';
 import { ATCError } from '../types.js';
+import type { WorkspaceService } from './workspace-service.js';
 
 type DbType = ReturnType<typeof getConnection>;
 
 export class ProjectService {
   private db: DbType;
+  private workspaceService: WorkspaceService | null = null;
 
   constructor(db: DbType) {
     this.db = db;
+  }
+
+  /**
+   * Inject WorkspaceService for git repo validation during project creation.
+   * Called after service container is assembled to avoid circular deps.
+   */
+  setWorkspaceService(ws: WorkspaceService): void {
+    this.workspaceService = ws;
   }
 
   listProjects(): Project[] {
@@ -29,11 +40,42 @@ export class ProjectService {
     return this.rowToProject(row);
   }
 
-  createProject(input: { name: string; description?: string }): Project {
+  createProject(input: {
+    name: string;
+    description?: string;
+    repoRoot?: string;
+    baseBranch?: string;
+  }): Project {
     const name = input.name?.trim();
 
     if (!name) {
       throw new ATCError('PROJECT_NAME_REQUIRED', 'Project name is required');
+    }
+
+    let normalizedRepoRoot: string | null = null;
+    const baseBranch = input.baseBranch?.trim() || null;
+
+    if (input.repoRoot) {
+      normalizedRepoRoot = this.validateAndNormalizeRepoRoot(input.repoRoot);
+      this.checkRepoRootUniqueness(normalizedRepoRoot);
+
+      // Auto-create base workspace if WorkspaceService is available
+      if (this.workspaceService) {
+        const existing = this.workspaceService.ensureActiveBaseWorkspace(normalizedRepoRoot);
+        if (!existing) {
+          // No base workspace exists — create one
+          // Note: createWorkspace is async but we call it fire-and-forget here
+          // because the workspace is not strictly required for project creation
+          this.workspaceService
+            .createWorkspace({
+              repoRoot: normalizedRepoRoot,
+              baseBranch: baseBranch ?? 'main',
+            })
+            .catch(() => {
+              // Non-fatal: workspace creation failure doesn't block project creation
+            });
+        }
+      }
     }
 
     const id = uuidv4();
@@ -45,6 +87,8 @@ export class ProjectService {
         id,
         name,
         description: input.description ?? null,
+        repoRoot: normalizedRepoRoot,
+        baseBranch,
         createdAt,
       })
       .run();
@@ -52,7 +96,10 @@ export class ProjectService {
     return this.getProject(id);
   }
 
-  updateProject(id: string, input: { name?: string; description?: string }): Project {
+  updateProject(
+    id: string,
+    input: { name?: string; description?: string; repoRoot?: string; baseBranch?: string },
+  ): Project {
     this.getProject(id);
 
     const updateData: Partial<typeof projects.$inferInsert> = {};
@@ -67,6 +114,36 @@ export class ProjectService {
 
     if (input.description !== undefined) {
       updateData.description = input.description;
+    }
+
+    if (input.repoRoot !== undefined) {
+      if (input.repoRoot) {
+        const normalizedRepoRoot = this.validateAndNormalizeRepoRoot(input.repoRoot);
+        this.checkRepoRootUniqueness(normalizedRepoRoot, id);
+        updateData.repoRoot = normalizedRepoRoot;
+
+        // Auto-create base workspace
+        if (this.workspaceService) {
+          const existing = this.workspaceService.ensureActiveBaseWorkspace(normalizedRepoRoot);
+          if (!existing) {
+            this.workspaceService
+              .createWorkspace({
+                repoRoot: normalizedRepoRoot,
+                baseBranch: input.baseBranch ?? 'main',
+              })
+              .catch(() => {
+                // Non-fatal
+              });
+          }
+        }
+      } else {
+        // Allow clearing repoRoot by passing empty string
+        updateData.repoRoot = null;
+      }
+    }
+
+    if (input.baseBranch !== undefined) {
+      updateData.baseBranch = input.baseBranch || null;
     }
 
     if (Object.keys(updateData).length > 0) {
@@ -91,11 +168,59 @@ export class ProjectService {
     this.db.delete(projects).where(eq(projects.id, id)).run();
   }
 
+  /**
+   * Validate that the path is a git repo and normalize it.
+   */
+  private validateAndNormalizeRepoRoot(repoRoot: string): string {
+    const normalized = this.normalizePath(repoRoot);
+
+    if (!this.workspaceService) {
+      // Without WorkspaceService, skip git validation but still normalize
+      return normalized;
+    }
+
+    const gitRoot = this.workspaceService.getGitRoot(normalized);
+    if (!gitRoot) {
+      throw new ATCError('NOT_A_GIT_REPO', `Path is not a git repository: ${normalized}`, 400);
+    }
+
+    return gitRoot;
+  }
+
+  /**
+   * Check that no other project uses this repoRoot.
+   */
+  private checkRepoRootUniqueness(repoRoot: string, excludeProjectId?: string): void {
+    const existing = this.db
+      .select()
+      .from(projects)
+      .where(and(eq(projects.repoRoot, repoRoot), isNotNull(projects.repoRoot)))
+      .all();
+
+    const conflict = existing.find((p) => p.id !== excludeProjectId);
+    if (conflict) {
+      throw new ATCError(
+        'REPO_ALREADY_LINKED',
+        `Repository ${repoRoot} is already linked to project "${conflict.name}"`,
+        409,
+      );
+    }
+  }
+
+  /**
+   * Normalize path separators (Windows compat).
+   */
+  private normalizePath(p: string): string {
+    return normalize(p).replace(/\\/g, '/');
+  }
+
   private rowToProject(row: typeof projects.$inferSelect): Project {
     return {
       id: row.id,
       name: row.name,
       description: row.description,
+      repoRoot: row.repoRoot ?? null,
+      baseBranch: row.baseBranch ?? null,
       createdAt: row.createdAt,
     };
   }

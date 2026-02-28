@@ -105,6 +105,20 @@ export function createAgentRoutes(
     return c.json({ agent });
   });
 
+  // PATCH /api/agents/:id/role - Update agent role (promote/demote)
+  app.patch('/:id/role', async (c) => {
+    const agentId = c.req.param('id');
+    const body = (await c.req.json()) as { role?: string };
+    if (!body.role || !['main', 'worker'].includes(body.role)) {
+      return c.json(
+        { error: { code: 'INVALID_INPUT', message: 'role must be "main" or "worker"' } },
+        400,
+      );
+    }
+    const agent = await services.agentRegistry.updateRole(agentId, body.role as 'main' | 'worker');
+    return c.json({ agent });
+  });
+
   // DELETE /api/agents/:id - Remove an agent entirely (disconnect + delete from DB)
   // If the agent was spawned by us, also kills the opencode process.
   // Manually registered agents are only unregistered (their process is NOT killed).
