@@ -115,6 +115,19 @@ export class OpenCodeDiscovery {
       }
     }
 
+    // Step 6: Backfill CWD for existing agents that have cwd=null
+    const agentsToBackfill = existingAgents.filter((a) => a.cwd === null && a.serverUrl);
+    if (agentsToBackfill.length > 0) {
+      await Promise.allSettled(
+        agentsToBackfill.map(async (a) => {
+          const cwd = await this.services.opencodeBridge.fetchCwd(a.serverUrl!);
+          if (cwd) {
+            this.services.agentRegistry.updateCwd(a.id, cwd);
+          }
+        }),
+      );
+    }
+
     return {
       discovered,
       processes,
@@ -360,9 +373,11 @@ export class OpenCodeDiscovery {
    */
   async track(serverUrl: string, name?: string): Promise<{ agentId: string }> {
     const agentName = name || `OpenCode@${new URL(serverUrl).port}`;
+    const cwd = await this.services.opencodeBridge.fetchCwd(serverUrl);
     const agent = await this.services.agentRegistry.registerOpenCodeAgent({
       name: agentName,
       serverUrl,
+      ...(cwd ? { cwd } : {}),
     });
     return { agentId: agent.id };
   }

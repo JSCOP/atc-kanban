@@ -428,6 +428,7 @@ export class AgentRegistry {
           agentToken: newToken,
           status: 'active',
           lastHeartbeat: now,
+          ...(input.cwd ? { cwd: input.cwd } : {}),
         })
         .where(eq(agents.id, existing.id))
         .run();
@@ -457,6 +458,7 @@ export class AgentRegistry {
         status: 'active',
         connectedAt: now,
         lastHeartbeat: now,
+        cwd: input.cwd ?? null,
         workspaceMode: 'disabled',
       })
       .run();
@@ -469,6 +471,16 @@ export class AgentRegistry {
     return this.getById(agentId);
   }
 
+  /**
+   * Update the CWD (working directory) of an agent.
+   */
+  updateCwd(agentId: string, cwd: string): void {
+    this.db
+      .update(agents)
+      .set({ cwd })
+      .where(eq(agents.id, agentId))
+      .run();
+  }
   /**
    * Check health of a specific OpenCode agent via HTTP.
    */

@@ -87,6 +87,7 @@ export interface RegisterAgentInput {
 export interface RegisterOpenCodeAgentInput {
   name: string;
   serverUrl: string;
+  cwd?: string;
 }
 
 export interface RegisterAgentResult {

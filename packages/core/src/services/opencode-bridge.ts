@@ -168,6 +168,24 @@ export class OpenCodeBridge {
       );
     }
   }
+  /**
+   * Fetch the working directory (CWD) from an OpenCode instance.
+   * Calls GET {serverUrl}/session and extracts the `directory` field from the first session.
+   * Returns null if no sessions exist or on any error.
+   */
+  async fetchCwd(serverUrl: string): Promise<string | null> {
+    try {
+      const res = await fetch(`${serverUrl}/session`, {
+        signal: AbortSignal.timeout(5000),
+      });
+      if (!res.ok) return null;
+      const sessions = (await res.json()) as Array<{ directory?: string }>;
+      if (sessions.length === 0) return null;
+      return sessions[0].directory ?? null;
+    } catch {
+      return null;
+    }
+  }
 
   /**
    * Create a new session on an OpenCode agent.

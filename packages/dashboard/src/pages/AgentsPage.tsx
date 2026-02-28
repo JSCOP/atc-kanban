@@ -3,16 +3,11 @@ import { AgentActivityPanel } from '../components/agents/AgentActivityPanel';
 import { OpenCodeChatPanel } from '../components/agents/OpenCodeChatPanel';
 import { useAgentStore } from '../stores/agent-store';
 import { useWorkspaceStore } from '../stores/workspace-store';
-import type { Agent, DetectedProcess, DiscoveredInstance } from '../types';
+import type { Agent, DiscoveredInstance } from '../types';
 
 const statusColors = {
   active: 'bg-green-500',
   disconnected: 'bg-red-500',
-};
-
-const statusText = {
-  active: 'Online',
-  disconnected: 'Offline',
 };
 
 const connectionTypeColors = {
@@ -44,6 +39,9 @@ function extractPort(url: string | null): string {
   }
 }
 
+function getFolderName(path: string): string {
+  return path.split(/[/\\]/).pop() || path;
+}
 
 function AgentCard({
   agent,
@@ -52,6 +50,7 @@ function AgentCard({
   onChat,
   onActivity,
   onRename,
+  onRoleChange,
 }: {
   agent: Agent;
   onRemove: (id: string) => void;
@@ -59,6 +58,7 @@ function AgentCard({
   onChat?: (id: string) => void;
   onActivity?: (id: string) => void;
   onRename?: (id: string, newName: string) => void;
+  onRoleChange?: (id: string, role: 'main' | 'worker') => void;
 }) {
   const isMain = agent.role === 'main';
   const isActive = agent.status === 'active';
@@ -68,209 +68,202 @@ function AgentCard({
   const [copied, setCopied] = useState(false);
 
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 card-hover">
-      <div className="flex items-start justify-between mb-4">
-        <div className="flex items-center gap-3">
-          <div
-            className={`w-10 h-10 rounded-xl flex items-center justify-center ${
-              isMain
-                ? 'bg-gradient-to-br from-yellow-500 to-orange-500'
-                : 'bg-gradient-to-br from-blue-500 to-purple-500'
-            }`}
-          >
-            {isMain ? (
-              <svg
-                className="w-5 h-5 text-white"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"
-                />
-              </svg>
-            ) : (
-              <svg
-                className="w-5 h-5 text-white"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
-                />
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-                />
-              </svg>
-            )}
-          </div>
-          <div>
-            {editing ? (
-              <input
-                autoFocus
-                value={editName}
-                onChange={(e) => setEditName(e.target.value)}
-                onBlur={() => {
+    <div className="bg-gray-900 border border-gray-800 rounded-lg p-4 hover:border-gray-700 transition-colors">
+      {/* Header: Icon + Name + Status + Type */}
+      <div className="flex items-start gap-3 mb-3">
+        <div
+          className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+            isMain
+              ? 'bg-gradient-to-br from-yellow-500 to-orange-500'
+              : 'bg-gradient-to-br from-blue-500 to-purple-500'
+          }`}
+        >
+          {isMain ? (
+            <svg
+              className="w-4 h-4 text-white"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"
+              />
+            </svg>
+          ) : (
+            <svg
+              className="w-4 h-4 text-white"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+              />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+              />
+            </svg>
+          )}
+        </div>
+        <div className="flex-1 min-w-0">
+          {editing ? (
+            <input
+              autoFocus
+              value={editName}
+              onChange={(e) => setEditName(e.target.value)}
+              onBlur={() => {
+                setEditing(false);
+                if (editName.trim() && editName.trim() !== agent.name) {
+                  onRename?.(agent.id, editName.trim());
+                } else {
+                  setEditName(agent.name);
+                }
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
                   setEditing(false);
                   if (editName.trim() && editName.trim() !== agent.name) {
                     onRename?.(agent.id, editName.trim());
                   } else {
                     setEditName(agent.name);
                   }
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    setEditing(false);
-                    if (editName.trim() && editName.trim() !== agent.name) {
-                      onRename?.(agent.id, editName.trim());
-                    } else {
-                      setEditName(agent.name);
-                    }
-                  }
-                  if (e.key === 'Escape') {
-                    setEditing(false);
-                    setEditName(agent.name);
-                  }
-                }}
-                className="bg-gray-800 border border-blue-500 rounded px-1 py-0.5 text-white font-semibold text-sm focus:outline-none w-full"
-              />
-            ) : (
+                }
+                if (e.key === 'Escape') {
+                  setEditing(false);
+                  setEditName(agent.name);
+                }
+              }}
+              className="bg-gray-800 border border-blue-500 rounded px-2 py-0.5 text-white font-medium text-sm focus:outline-none w-full"
+            />
+          ) : (
+            <div className="flex items-center gap-2">
               <h3
-                className="font-semibold text-white group/name cursor-pointer flex items-center gap-1"
-                onClick={() => { setEditName(agent.name); setEditing(true); }}
+                className="font-medium text-white text-sm truncate cursor-pointer hover:text-blue-400 transition-colors flex items-center gap-1 group"
+                onClick={() => {
+                  setEditName(agent.name);
+                  setEditing(true);
+                }}
                 title="Click to rename"
               >
                 {agent.name}
-                <svg className="w-3 h-3 text-gray-600 group-hover/name:text-blue-400 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                <svg
+                  className="w-3 h-3 text-gray-600 group-hover:text-blue-400 transition-colors opacity-0 group-hover:opacity-100"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
+                  />
                 </svg>
               </h3>
-            )}
-            <p className="text-sm text-gray-500">{agent.agentType || 'Unknown Type'}</p>
+            </div>
+          )}
+          <div className="flex items-center gap-2 mt-0.5">
+            <span className={`w-1.5 h-1.5 rounded-full ${statusColors[agent.status]}`} />
+            <span className={`text-xs ${isActive ? 'text-green-400' : 'text-red-400'}`}>
+              {isActive ? 'Online' : 'Offline'}
+            </span>
+            <span
+              className={`text-[10px] px-1.5 py-0.5 rounded ${connectionTypeColors[agent.connectionType]}`}
+            >
+              {agent.connectionType.toUpperCase()}
+            </span>
           </div>
         </div>
+      </div>
+
+      {/* Info Row: Port, Stats */}
+      <div className="flex items-center justify-between text-xs text-gray-500 mb-3">
         <div className="flex items-center gap-3">
-          <span
-            className={`text-xs px-2 py-0.5 rounded ${connectionTypeColors[agent.connectionType]}`}
-          >
-            {agent.connectionType.toUpperCase()}
-          </span>
-
-          <div className={`w-2 h-2 rounded-full ${statusColors[agent.status]}`} />
-          <span className={`text-sm ${isActive ? 'text-green-400' : 'text-red-400'}`}>
-            {statusText[agent.status]}
-          </span>
+          <span>Port {extractPort(agent.serverUrl)}</span>
+          {isOpenCode && agent.serverUrl && (
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(agent.serverUrl);
+                setCopied(true);
+                setTimeout(() => setCopied(false), 2000);
+              }}
+              className="text-gray-500 hover:text-gray-300 transition-colors flex items-center gap-1"
+              title="Copy URL"
+            >
+              {copied ? (
+                <svg
+                  className="w-3 h-3 text-green-400"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M5 13l4 4L19 7"
+                  />
+                </svg>
+              ) : (
+                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+                  />
+                </svg>
+              )}
+            </button>
+          )}
+        </div>
+        <div className="flex items-center gap-2 text-gray-400">
+          <span className="text-green-400">✓{agent.tasksCompleted}</span>
+          <span className="text-red-400">✗{agent.tasksFailed}</span>
         </div>
       </div>
 
+      {/* Current Task */}
       {agent.currentTaskId && (
-        <div className="mb-4 p-3 bg-gray-800/50 rounded-lg">
-          <p className="text-xs text-gray-500 mb-1">Current Task</p>
-          <p className="text-sm text-gray-300 truncate">
-            {agent.currentTaskTitle || agent.currentTaskId}
-          </p>
+        <div className="mb-3 p-2 bg-gray-800/50 rounded text-xs">
+          <span className="text-gray-500">Task: </span>
+          <span className="text-gray-300 truncate">
+            {agent.currentTaskTitle || agent.currentTaskId.slice(0, 8)}
+          </span>
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-4 pt-4 border-t border-gray-800">
-        <div>
-          <p className="text-2xl font-bold text-white">{agent.tasksCompleted}</p>
-          <p className="text-xs text-gray-500">Completed</p>
-        </div>
-        <div>
-          <p className="text-2xl font-bold text-red-400">{agent.tasksFailed}</p>
-          <p className="text-xs text-gray-500">Failed</p>
-        </div>
-        {!isOpenCode && (
-          <>
-            <div>
-              <p className="text-sm font-mono text-gray-400">{agent.processId ?? '—'}</p>
-              <p className="text-xs text-gray-500">PID</p>
-            </div>
-            <div>
-              <p
-                className="text-sm font-mono text-gray-400 truncate"
-                title={agent.cwd ?? undefined}
-              >
-                {agent.cwd ?? '—'}
-              </p>
-              <p className="text-xs text-gray-500">CWD</p>
-            </div>
-          </>
-        )}
-      </div>
-
-      {isOpenCode && agent.serverUrl && (
-        <div className="mt-3 flex items-center gap-2">
-          <p className="text-xs text-gray-500">Server URL</p>
-          <p className="text-sm font-mono text-gray-400">{agent.serverUrl}</p>
-          <button
-            onClick={() => {
-              navigator.clipboard.writeText(agent.serverUrl);
-              setCopied(true);
-              setTimeout(() => setCopied(false), 2000);
-            }}
-            className="p-1 text-gray-500 hover:text-gray-300 hover:bg-gray-800 rounded transition-colors cursor-pointer"
-            title="Copy URL"
-          >
-            {copied ? (
-              <svg className="w-3 h-3 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-              </svg>
-            ) : (
-              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-              </svg>
-            )}
-          </button>
-        </div>
-      )}
-
-
-      {/* Activity button — available for all agents */}
-      {onActivity && (
-        <div className="mt-4 pt-4 border-t border-gray-800">
-          <button
-            onClick={() => onActivity(agent.id)}
-            className="text-xs px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg transition-colors flex items-center gap-1"
-          >
-            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-            </svg>
-            Activity
-          </button>
-        </div>
-      )}
-
-      {isOpenCode && agent.serverUrl && (
-        <p className="text-xs text-gray-600 mt-2">
-          💡 Connect directly: opencode --server {agent.serverUrl}
-        </p>
-      )}
-
-      <div className="mt-4 pt-4 border-t border-gray-800 flex items-center gap-2">
+      {/* Action Buttons */}
+      <div className="flex items-center gap-1.5 pt-3 border-t border-gray-800">
         {isOpenCode && onHealthCheck && (
           <button
             onClick={() => onHealthCheck(agent.id)}
-            className="text-xs px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg transition-colors"
+            className="text-[10px] px-2 py-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded transition-colors"
+            title="Health Check"
           >
-            Health Check
+            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
+            </svg>
           </button>
         )}
         {isActive && onChat && isOpenCode && (
           <button
             onClick={() => onChat(agent.id)}
-            className="text-xs px-3 py-1.5 bg-purple-600 hover:bg-purple-500 text-white rounded-lg transition-colors flex items-center gap-1"
+            className="text-[10px] px-2 py-1 bg-purple-600/80 hover:bg-purple-500 text-white rounded transition-colors flex items-center gap-1"
           >
             <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path
@@ -283,14 +276,42 @@ function AgentCard({
             Chat
           </button>
         )}
+        {onActivity && (
+          <button
+            onClick={() => onActivity(agent.id)}
+            className="text-[10px] px-2 py-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded transition-colors flex items-center gap-1"
+          >
+            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
+              />
+            </svg>
+            Activity
+          </button>
+        )}
         <div className="flex-1" />
+        {isActive && onRoleChange && (
+          <button
+            onClick={() => onRoleChange(agent.id, isMain ? 'worker' : 'main')}
+            className={`text-[10px] px-2 py-1 rounded transition-colors border ${
+              isMain
+                ? 'bg-gray-600/20 hover:bg-gray-600/30 text-gray-400 border-gray-600/30'
+                : 'bg-amber-600/20 hover:bg-amber-600/30 text-amber-400 border-amber-600/30'
+            }`}
+          >
+            {isMain ? '⬇ Demote' : '⬆ Promote'}
+          </button>
+        )}
         <button
           onClick={() => onRemove(agent.id)}
-          className="text-xs px-3 py-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors cursor-pointer"
-          title={isActive ? 'Disconnect and remove agent' : 'Remove agent'}
+          className="text-[10px] px-2 py-1 rounded bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors cursor-pointer"
+          title={isActive ? 'Disconnect' : 'Remove'}
         >
           {isActive ? 'Disconnect' : 'Remove'}
-      </button>
+        </button>
       </div>
     </div>
   );
@@ -444,6 +465,92 @@ function SpawnOpenCodeForm({
   );
 }
 
+interface CollapsibleSectionProps {
+  id: string;
+  title: string;
+  subtitle?: string;
+  icon: React.ReactNode;
+  count: number;
+  activeCount: number;
+  expanded: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+  defaultExpanded?: boolean;
+}
+
+function CollapsibleSection({
+  id,
+  title,
+  subtitle,
+  icon,
+  count,
+  activeCount,
+  expanded,
+  onToggle,
+  children,
+}: CollapsibleSectionProps) {
+  return (
+    <div className="border border-gray-800 rounded-xl overflow-hidden bg-gray-900/30">
+      <button
+        onClick={onToggle}
+        className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-800/50 transition-colors text-left"
+      >
+        <svg
+          className={`w-4 h-4 text-gray-500 transition-transform duration-200 ${expanded ? 'rotate-90' : ''}`}
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+        </svg>
+        {icon}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="font-medium text-white text-sm">{title}</span>
+            {subtitle && (
+              <span className="text-xs text-gray-500 truncate hidden sm:inline" title={subtitle}>
+                {subtitle}
+              </span>
+            )}
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          {/* Status dots summary */}
+          <div className="flex items-center gap-1">
+            {activeCount > 0 && (
+              <>
+                {Array.from({ length: Math.min(activeCount, 5) }).map((_, i) => (
+                  <div key={`active-${i}`} className="w-1.5 h-1.5 rounded-full bg-green-500" />
+                ))}
+                {activeCount > 5 && <span className="text-[10px] text-green-500 ml-0.5">+</span>}
+              </>
+            )}
+            {count - activeCount > 0 && (
+              <>
+                {Array.from({ length: Math.min(count - activeCount, 3) }).map((_, i) => (
+                  <div key={`inactive-${i}`} className="w-1.5 h-1.5 rounded-full bg-red-500" />
+                ))}
+                {count - activeCount > 3 && (
+                  <span className="text-[10px] text-red-500 ml-0.5">+</span>
+                )}
+              </>
+            )}
+          </div>
+          {/* Count badge */}
+          <span className="text-xs px-2 py-0.5 rounded-full bg-gray-800 text-gray-400">
+            {count}
+          </span>
+        </div>
+      </button>
+      <div
+        className={`overflow-hidden transition-all duration-200 ease-in-out ${expanded ? 'max-h-[2000px] opacity-100' : 'max-h-0 opacity-0'}`}
+      >
+        <div className="p-4 pt-0">{children}</div>
+      </div>
+    </div>
+  );
+}
+
 export function AgentsPage() {
   const {
     agents,
@@ -467,6 +574,9 @@ export function AgentsPage() {
   const [selectedChatAgentId, setSelectedChatAgentId] = useState<string | null>(null);
   const [selectedActivityAgentId, setSelectedActivityAgentId] = useState<string | null>(null);
 
+  // Collapsible state - empty set means all collapsed by default
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+
   const selectedChatAgent = agents.find((a) => a.id === selectedChatAgentId);
   const selectedActivityAgent = agents.find((a) => a.id === selectedActivityAgentId);
 
@@ -482,6 +592,18 @@ export function AgentsPage() {
     const interval = setInterval(fetchAgents, 30000);
     return () => clearInterval(interval);
   }, [fetchAgents, scanForAgents, fetchWorkspaces]);
+
+  const toggleGroup = (groupId: string) => {
+    setExpandedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(groupId)) {
+        next.delete(groupId);
+      } else {
+        next.add(groupId);
+      }
+      return next;
+    });
+  };
 
   const handleRegister = async (input: { name: string; serverUrl: string }) => {
     setRegisterLoading(true);
@@ -530,32 +652,45 @@ export function AgentsPage() {
   // TUI-only processes: running but no HTTP server (can't be tracked)
   const tuiOnlyProcesses = detectedProcesses.filter((p) => !p.hasHttpServer);
 
-  // Group agents by workspace repo → worktree
-  const agentWorkspaceMap = new Map<string, Map<string, Agent[]>>();
+  // Group agents by workspace repo → worktree, with CWD fallback
+  // Flattened: repoRoot -> agents (removed worktree sub-grouping since CWD fallback makes them equal)
+  const agentWorkspaceMap = new Map<string, Agent[]>();
   const unassignedAgents: Agent[] = [];
 
   for (const agent of agents) {
     const ws = workspaces.find((w) => w.agentId === agent.id && w.status === 'active');
     if (ws) {
+      // Active workspace match → group by repoRoot
       if (!agentWorkspaceMap.has(ws.repoRoot)) {
-        agentWorkspaceMap.set(ws.repoRoot, new Map());
+        agentWorkspaceMap.set(ws.repoRoot, []);
       }
-      const repoGroup = agentWorkspaceMap.get(ws.repoRoot)!;
-      const worktreeKey = ws.worktreePath;
-      if (!repoGroup.has(worktreeKey)) {
-        repoGroup.set(worktreeKey, []);
+      agentWorkspaceMap.get(ws.repoRoot)!.push(agent);
+    } else if (agent.cwd) {
+      // CWD fallback → group by cwd directory
+      if (!agentWorkspaceMap.has(agent.cwd)) {
+        agentWorkspaceMap.set(agent.cwd, []);
       }
-      repoGroup.get(worktreeKey)!.push(agent);
+      agentWorkspaceMap.get(agent.cwd)!.push(agent);
     } else {
+      // No workspace, no CWD → unassigned
       unassignedAgents.push(agent);
     }
   }
+
+  // Calculate total counts
+  const totalAgents = agents.length;
+  const activeAgents = agents.filter((a) => a.status === 'active').length;
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white">Agents</h1>
+          <h1 className="text-2xl font-bold text-white">
+            Agents
+            <span className="ml-2 text-sm font-normal text-gray-500">
+              ({activeAgents}/{totalAgents})
+            </span>
+          </h1>
           <p className="text-gray-400 text-sm mt-1">Monitor your agent fleet status</p>
         </div>
         <button
@@ -565,12 +700,29 @@ export function AgentsPage() {
         >
           {scanning ? (
             <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+              <circle
+                className="opacity-25"
+                cx="12"
+                cy="12"
+                r="10"
+                stroke="currentColor"
+                strokeWidth="4"
+                fill="none"
+              />
+              <path
+                className="opacity-75"
+                fill="currentColor"
+                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+              />
             </svg>
           ) : (
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+              />
             </svg>
           )}
           {scanning ? 'Scanning...' : 'Scan for Agents'}
@@ -606,118 +758,145 @@ export function AgentsPage() {
         </div>
       ) : (
         <>
-          {/* Workspace-grouped agents */}
-          {Array.from(agentWorkspaceMap.entries()).map(([repoRoot, worktreeMap]) => (
-            <div key={repoRoot} className="space-y-4">
-              <div className="flex items-center gap-2">
-                <svg className="w-5 h-5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-                </svg>
-                <h2 className="text-lg font-semibold text-white">{repoRoot.split(/[/\\]/).pop()}</h2>
-                <span className="text-xs text-gray-500 font-mono truncate max-w-md" title={repoRoot}>{repoRoot}</span>
-              </div>
-
-              {Array.from(worktreeMap.entries()).map(([worktreePath, worktreeAgents]) => (
-                <div key={worktreePath} className="ml-6 space-y-3">
-                  <div className="flex items-center gap-2">
-                    <svg className="w-4 h-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+          {/* Workspace-grouped agents - Collapsible */}
+          <div className="space-y-3">
+            {Array.from(agentWorkspaceMap.entries()).map(([repoRoot, groupAgents]) => {
+              const groupId = `workspace-${repoRoot}`;
+              const activeCount = groupAgents.filter((a) => a.status === 'active').length;
+              return (
+                <CollapsibleSection
+                  key={repoRoot}
+                  id={groupId}
+                  title={getFolderName(repoRoot)}
+                  subtitle={repoRoot}
+                  icon={
+                    <svg
+                      className="w-5 h-5 text-gray-500"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"
+                      />
                     </svg>
-                    <h3 className="text-sm font-medium text-gray-400">
-                      {worktreePath.split(/[/\\]/).pop()}
-                    </h3>
-                    <span className="text-xs text-gray-600 font-mono truncate max-w-sm" title={worktreePath}>{worktreePath}</span>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {worktreeAgents.map((agent) => (
-                      <div key={agent.id}>
-                        <AgentCard
-                          agent={agent}
-                          onRemove={removeAgentApi}
-                          onHealthCheck={agent.connectionType === 'opencode' ? handleHealthCheck : undefined}
-                          onChat={agent.connectionType === 'opencode' && agent.status === 'active' ? handleChat : undefined}
-                          onRename={handleRename}
-                          onActivity={handleActivity}
-                        />
-                        {agent.status === 'active' && agent.role === 'worker' && (
-                          <button
-                            onClick={() => handleRoleChange(agent.id, 'main')}
-                            className="mt-2 w-full px-3 py-1.5 bg-amber-600/20 hover:bg-amber-600/30 text-amber-400 text-xs font-medium rounded-lg transition-colors border border-amber-600/30"
-                          >
-                            ⬆ Promote to Main
-                          </button>
-                        )}
-                        {agent.role === 'main' && (
-                          <button
-                            onClick={() => handleRoleChange(agent.id, 'worker')}
-                            className="mt-2 w-full px-3 py-1.5 bg-gray-600/20 hover:bg-gray-600/30 text-gray-400 text-xs font-medium rounded-lg transition-colors border border-gray-600/30"
-                          >
-                            ⬇ Demote to Worker
-                          </button>
-                        )}
-                      </div>
+                  }
+                  count={groupAgents.length}
+                  activeCount={activeCount}
+                  expanded={expandedGroups.has(groupId)}
+                  onToggle={() => toggleGroup(groupId)}
+                >
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                    {groupAgents.map((agent) => (
+                      <AgentCard
+                        key={agent.id}
+                        agent={agent}
+                        onRemove={removeAgentApi}
+                        onHealthCheck={
+                          agent.connectionType === 'opencode' ? handleHealthCheck : undefined
+                        }
+                        onChat={
+                          agent.connectionType === 'opencode' && agent.status === 'active'
+                            ? handleChat
+                            : undefined
+                        }
+                        onRename={handleRename}
+                        onActivity={handleActivity}
+                        onRoleChange={
+                          agent.connectionType === 'opencode' ? handleRoleChange : undefined
+                        }
+                      />
                     ))}
                   </div>
-                </div>
-              ))}
-            </div>
-          ))}
+                </CollapsibleSection>
+              );
+            })}
+          </div>
 
-          {/* Unassigned agents (no workspace) */}
+          {/* Unassigned agents (no workspace) - Collapsible */}
           {unassignedAgents.length > 0 && (
-            <div className="space-y-4">
-              <div className="flex items-center gap-2">
-                <svg className="w-5 h-5 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            <CollapsibleSection
+              id="unassigned"
+              title="Unassigned"
+              icon={
+                <svg
+                  className="w-5 h-5 text-gray-600"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
                 </svg>
-                <h2 className="text-lg font-semibold text-gray-400">Unassigned ({unassignedAgents.length})</h2>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              }
+              count={unassignedAgents.length}
+              activeCount={unassignedAgents.filter((a) => a.status === 'active').length}
+              expanded={expandedGroups.has('unassigned')}
+              onToggle={() => toggleGroup('unassigned')}
+            >
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
                 {unassignedAgents.map((agent) => (
-                  <div key={agent.id}>
-                    <AgentCard
-                      agent={agent}
-                      onRemove={removeAgentApi}
-                      onHealthCheck={agent.connectionType === 'opencode' ? handleHealthCheck : undefined}
-                      onChat={agent.connectionType === 'opencode' && agent.status === 'active' ? handleChat : undefined}
-                      onRename={handleRename}
-                      onActivity={handleActivity}
-                    />
-                    {agent.status === 'active' && agent.role === 'worker' && agent.connectionType === 'opencode' && (
-                      <button
-                        onClick={() => handleRoleChange(agent.id, 'main')}
-                        className="mt-2 w-full px-3 py-1.5 bg-amber-600/20 hover:bg-amber-600/30 text-amber-400 text-xs font-medium rounded-lg transition-colors border border-amber-600/30"
-                      >
-                        ⬆ Promote to Main
-                      </button>
-                    )}
-                    {agent.role === 'main' && (
-                      <button
-                        onClick={() => handleRoleChange(agent.id, 'worker')}
-                        className="mt-2 w-full px-3 py-1.5 bg-gray-600/20 hover:bg-gray-600/30 text-gray-400 text-xs font-medium rounded-lg transition-colors border border-gray-600/30"
-                      >
-                        ⬇ Demote to Worker
-                      </button>
-                    )}
-                  </div>
+                  <AgentCard
+                    key={agent.id}
+                    agent={agent}
+                    onRemove={removeAgentApi}
+                    onHealthCheck={
+                      agent.connectionType === 'opencode' ? handleHealthCheck : undefined
+                    }
+                    onChat={
+                      agent.connectionType === 'opencode' && agent.status === 'active'
+                        ? handleChat
+                        : undefined
+                    }
+                    onRename={handleRename}
+                    onActivity={handleActivity}
+                    onRoleChange={
+                      agent.connectionType === 'opencode' ? handleRoleChange : undefined
+                    }
+                  />
                 ))}
               </div>
-            </div>
+            </CollapsibleSection>
           )}
 
+          {/* Discovered Instances - Collapsible (default collapsed) */}
           {unregisteredDiscovered.length > 0 && (
-            <div>
-              <h2 className="text-lg font-semibold text-white mb-4">
-                Discovered Instances ({unregisteredDiscovered.length})
-              </h2>
-              <p className="text-xs text-gray-500 mb-3">
-                Unregistered OpenCode instances found via port scan + PID detection
-              </p>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <CollapsibleSection
+              id="discovered"
+              title={`Discovered Instances (${unregisteredDiscovered.length})`}
+              subtitle="Unregistered OpenCode instances found via port scan"
+              icon={
+                <svg
+                  className="w-5 h-5 text-blue-400"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                  />
+                </svg>
+              }
+              count={unregisteredDiscovered.length}
+              activeCount={unregisteredDiscovered.length}
+              expanded={expandedGroups.has('discovered')}
+              onToggle={() => toggleGroup('discovered')}
+            >
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                 {unregisteredDiscovered.map((instance) => (
                   <div
                     key={instance.serverUrl}
-                    className="bg-gray-900 border border-dashed border-gray-700 rounded-xl p-5 flex items-center justify-between"
+                    className="bg-gray-900 border border-dashed border-gray-700 rounded-lg p-4 flex items-center justify-between"
                   >
                     <div>
                       <p className="text-sm font-mono text-gray-300">{instance.serverUrl}</p>
@@ -732,18 +911,39 @@ export function AgentsPage() {
                   </div>
                 ))}
               </div>
-            </div>
+            </CollapsibleSection>
           )}
 
+          {/* TUI-Only Processes - Collapsible (default collapsed) */}
           {tuiOnlyProcesses.length > 0 && (
-            <div>
-              <h2 className="text-lg font-semibold text-yellow-400 mb-4">
-                TUI-Only Processes ({tuiOnlyProcesses.length})
-              </h2>
-              <div className="bg-yellow-500/5 border border-yellow-500/20 rounded-xl p-4 mb-4">
+            <CollapsibleSection
+              id="tui-only"
+              title={`TUI-Only Processes (${tuiOnlyProcesses.length})`}
+              subtitle="Running without HTTP server - cannot be tracked"
+              icon={
+                <svg
+                  className="w-5 h-5 text-yellow-400"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                  />
+                </svg>
+              }
+              count={tuiOnlyProcesses.length}
+              activeCount={tuiOnlyProcesses.length}
+              expanded={expandedGroups.has('tui-only')}
+              onToggle={() => toggleGroup('tui-only')}
+            >
+              <div className="bg-yellow-500/5 border border-yellow-500/20 rounded-lg p-3 mb-3">
                 <p className="text-sm text-yellow-300/80">
-                  These OpenCode instances are running in TUI mode without an HTTP server.
-                  They cannot be tracked or controlled remotely.
+                  These OpenCode instances are running in TUI mode without an HTTP server. They
+                  cannot be tracked or controlled remotely.
                 </p>
                 <p className="text-xs text-gray-400 mt-2">
                   To make them discoverable, restart with:{' '}
@@ -756,11 +956,11 @@ export function AgentsPage() {
                   </code>
                 </p>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                 {tuiOnlyProcesses.map((proc) => (
                   <div
                     key={proc.pid}
-                    className="bg-gray-900 border border-dashed border-yellow-700/40 rounded-xl p-5"
+                    className="bg-gray-900 border border-dashed border-yellow-700/40 rounded-lg p-4"
                   >
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-xs px-2 py-0.5 rounded bg-yellow-500/20 text-yellow-400">
@@ -774,7 +974,7 @@ export function AgentsPage() {
                   </div>
                 ))}
               </div>
-            </div>
+            </CollapsibleSection>
           )}
 
           {agents.length === 0 && (
@@ -804,7 +1004,10 @@ export function AgentsPage() {
       )}
 
       {selectedActivityAgent && (
-        <AgentActivityPanel agent={selectedActivityAgent} onClose={() => setSelectedActivityAgentId(null)} />
+        <AgentActivityPanel
+          agent={selectedActivityAgent}
+          onClose={() => setSelectedActivityAgentId(null)}
+        />
       )}
     </div>
   );
