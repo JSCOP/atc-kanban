@@ -26,7 +26,7 @@ function runNodeScript(script: string): void {
 test.describe('OpenCode Agent Dispatch (Unified)', () => {
   test.describe.configure({ timeout: 60000 });
 
-  const mockOpenCodeServer = createMockOpenCodeServer(13337);
+  const mockOpenCodeServer = createMockOpenCodeServer(14200);
   let server: Awaited<ReturnType<ReturnType<typeof createMockOpenCodeServer>['start']>> | undefined;
   let testTaskId: string | undefined;
 
@@ -66,7 +66,7 @@ test.describe('OpenCode Agent Dispatch (Unified)', () => {
 
     // Step 3: Register OpenCode agent via Agents page form
     await page.getByPlaceholder('Agent name').fill('Test-MockAgent');
-    await page.getByPlaceholder('http://localhost:3000').fill('http://127.0.0.1:13337');
+    await page.getByPlaceholder('http://localhost:3000').fill('http://127.0.0.1:14200');
     await page.getByRole('button', { name: 'Register Agent' }).click();
     await expect(page.getByText('Test-MockAgent')).toBeVisible({ timeout: 10000 });
 
@@ -93,8 +93,8 @@ test.describe('OpenCode Agent Dispatch (Unified)', () => {
     });
     // Scope interactions to the dialog modal
     const dialog = page.locator('.animate-slide-in');
-    // Select the OpenCode agent from the dropdown inside the dialog
-    await dialog.locator('select').first().selectOption({ index: 1 });
+    // Select the mock agent by label (NOT by index — index selection can pick real OpenCode agents)
+    await dialog.locator('select').first().selectOption({ label: /Test-MockAgent/ });
     await dialog
       .getByPlaceholder('Override the default task prompt with custom instructions...')
       .fill('Run this task through the OpenCode mock dispatcher.');
@@ -139,7 +139,8 @@ test.describe('OpenCode Agent Dispatch (Unified)', () => {
     `);
   });
 
-  test.afterEach(() => {
+    // Cleanup: delete test tasks by title pattern and test agents by name (not by captured ID)
+    // This is more robust than using testTaskId which may be undefined at script-creation time
     try {
       runNodeScript(`
         const path = require('node:path');
@@ -147,19 +148,16 @@ test.describe('OpenCode Agent Dispatch (Unified)', () => {
         const dbPath = path.resolve(process.cwd(), 'data', 'atc.sqlite');
         const db = new Database(dbPath);
 
-        const taskId = ${JSON.stringify(testTaskId ?? null)};
-
-        // Delete test task first
-        if (taskId) {
-          db.prepare('DELETE FROM tasks WHERE id = ?').run(taskId);
-        }
-
-        // Unassign agent from any remaining tasks to avoid FK constraint
+        // Unassign test agent from all tasks to avoid FK constraint
         const agent = db.prepare("SELECT id FROM agents WHERE name = 'Test-MockAgent'").get();
         if (agent) {
           db.prepare('UPDATE tasks SET assigned_agent_id = NULL WHERE assigned_agent_id = ?').run(agent.id);
         }
 
+        // Delete test tasks by title pattern
+        db.prepare("DELETE FROM tasks WHERE title LIKE 'E2E Unified Dispatch Task%'").run();
+
+        // Delete test agent
         db.prepare("DELETE FROM agents WHERE name = 'Test-MockAgent'").run();
 
         db.close();
@@ -169,5 +167,4 @@ test.describe('OpenCode Agent Dispatch (Unified)', () => {
     } finally {
       testTaskId = undefined;
     }
-  });
 });

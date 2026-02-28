@@ -18,11 +18,16 @@
   "devDependencies": {
     "@biomejs/biome": "^1.9.0",
     "@playwright/test": "^1.58.2",
+    "better-sqlite3": "^11.10.0",
     "concurrently": "^9.1.0",
     "typescript": "^5.7.0",
     "vitest": "^3.0.0"
   },
   "pnpm": {
-    "onlyBuiltDependencies": ["@biomejs/biome", "better-sqlite3", "esbuild"]
+    "onlyBuiltDependencies": [
+      "@biomejs/biome",
+      "better-sqlite3",
+      "esbuild"
+    ]
   }
 }
