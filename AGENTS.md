@@ -4,11 +4,10 @@
 
 If `docs/` directory exists in this project:
 
-1. **Read** `docs/_tracking/read-log.md` — get the doc inventory
-2. **Read** ALL docs where `auto: yes` — these are mandatory session context
-3. **Read** `docs/_tracking/task-status.md` — check for in-progress work
-4. **Skip** if you already read docs in THIS session (not a previous one)
-5. **Skip** after compact — you already have content in context
+1. **Read** all docs marked `always: yes` in the Doc Inventory below — these are mandatory session context
+2. **Read** `docs/_tracking/task-status.md` — check for in-progress work
+3. **Skip** if you already read docs in THIS session (not a previous one)
+4. **Skip** after compact — you already have content in context
 
 After reading, proceed normally. After modifying code, update affected docs (see Auto-Update Rule below).
 
@@ -126,28 +125,48 @@ pnpm db:migrate       # Drizzle: apply pending migrations
 
 # Document Protocol
 
-## On-Demand (during work)
-Before modifying code, check read-log for docs covering the area you're working on.
-Read those docs even if `auto: no` — they provide context for your changes.
+## Doc Inventory
+
+| file | scope | always |
+|------|-------|--------|
+| architecture.md | Project structure, monorepo layout, package boundaries, data flow | yes |
+| api.md | REST endpoints, MCP tools, WebSocket, request/response | yes |
+| schema.md | DB tables, columns, indexes, relationships, migration strategy | yes |
+| config.md | Environment variables, Biome, TypeScript, Vite, SQLite pragmas | yes |
+| commands.md | pnpm scripts, dev/build/test commands, server modes | yes |
+| know-how.md | Gotchas, workarounds, ESM quirks, MCP restrictions, patterns | yes |
+| testing.md | Playwright E2E, Vitest, test patterns, test gaps | no |
+
+(`always: yes` = read every session start. `always: no` = read when agent judges relevant or user requests.)
+
+## When to Read Docs
+
+### Session Start
+Read all docs marked `always: yes` above. Then read `docs/_tracking/task-status.md` to resume prior work.
+
+### On-Demand
+Read `always: no` docs when:
+- You judge them relevant to the area you're about to modify
+- User explicitly asks you to read them
+
+### After Compact
+Do NOT re-read any docs. You already have the content in context.
 
 ## Doc-First Workflow
 
 When analyzing or modifying code, **read relevant docs BEFORE touching code**:
 
-1. Read `docs/_tracking/read-log.md` to see which docs exist and their scope
-2. Identify which docs cover the area you're working on
-3. Read those docs to understand current architecture/patterns/conventions
-4. Use doc knowledge to locate the right files and modules
-5. Then explore and modify the actual code
+1. Check the Doc Inventory above to find docs covering the area you're working on
+2. Read those docs to understand current architecture/patterns/conventions
+3. Use doc knowledge to locate the right files and modules
+4. Then explore and modify the actual code
 
 ## Auto-Update Rule
 
-When you modify any code, check if `docs/` exists. If it does, update any doc whose topic was affected by your change. This is **mandatory**.
+When you modify any code, update any doc whose topic was affected. This is **mandatory** — no exceptions.
 
-1. After code change, read `docs/_tracking/read-log.md` for doc inventory
-2. For each doc, ask: "Does my change affect this doc's topic?"
-3. If yes → read the doc → update affected sections → keep under 100 lines
-4. Update `docs/_tracking/read-log.md` with new hash
+1. Check the Doc Inventory above for affected docs
+2. If your change affects a doc's scope → read it → update affected sections → keep under 100 lines
 
 Only update docs that exist. Never create new docs without user request.
 

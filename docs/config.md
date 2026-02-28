@@ -1,95 +1,70 @@
 # Configuration
 
-## Environment Variables
-
-Source: `.env.example` — loaded in `packages/server/src/index.ts`
+## Environment Variables (`.env.example`)
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `PORT` | `4000` | HTTP server port |
 | `DB_PATH` | `./data/atc.sqlite` | SQLite database file path |
-| `LOCK_TTL_MINUTES` | `30` | Task lock expiry timeout |
-| `HEARTBEAT_TIMEOUT_SECONDS` | `60` | (Legacy) heartbeat timeout |
-| `LOG_LEVEL` | `info` | Logging verbosity |
+| `LOCK_TTL_MINUTES` | `30` | Task lock expiry time (minutes) |
+| `HEARTBEAT_TIMEOUT_SECONDS` | `60` | (Legacy) Heartbeat timeout — replaced by PID health check |
+| `LOG_LEVEL` | `info` | Log verbosity |
 
-Data directory is auto-created if it doesn't exist.
+## Biome (`biome.json`)
 
-## TypeScript
+```json
+{
+  "formatter": { "indentStyle": "space", "indentWidth": 2, "lineWidth": 100 },
+  "javascript": { "quoteStyle": "single", "semicolons": "always" },
+  "linter": { "rules": { "recommended": true, "noUnusedImports": "warn", "noUnusedVariables": "warn" } },
+  "files": { "ignore": ["node_modules", "dist", "data", "*.sqlite"] }
+}
+```
 
-Base config: `tsconfig.base.json` — extended by each package.
+## TypeScript (`tsconfig.base.json`)
 
-| Option | Value | Note |
-|--------|-------|------|
-| target | ES2022 | Node 20 compatible |
-| module | ESNext | ESM-only |
-| moduleResolution | bundler | |
-| strict | true | Full strict mode |
-| declaration | true | Type declarations for library consumers |
-| isolatedModules | true | Required for esbuild/tsup |
-| forceConsistentCasingInFileNames | true | |
-
-**Package overrides**: Dashboard adds `jsx: react-jsx` + DOM libs, no declaration emit.
-
-## Biome (Linting + Formatting)
-
-Config: `biome.json`
-
-| Rule | Setting |
-|------|---------|
-| Indent | 2 spaces |
-| Line width | 100 chars |
-| Quotes | Single |
-| Semicolons | Always |
-| Unused imports | Warn |
-| Unused variables | Warn |
-| Import organization | Enabled (auto-sort) |
-
-**Ignored**: `node_modules`, `dist`, `data`, `*.sqlite`
-
-```bash
-pnpm lint    # biome check .
-pnpm format  # biome format --write .
+```json
+{
+  "target": "ES2022", "module": "ESNext", "moduleResolution": "bundler",
+  "strict": true, "esModuleInterop": true, "declaration": true,
+  "sourceMap": true, "isolatedModules": true
+}
 ```
 
 ## Build Tools
 
-| Package | Tool | Format | Target | Notes |
-|---------|------|--------|--------|-------|
-| core | tsup | ESM | Node 20 | Generates `.d.ts`, externals: `better-sqlite3` |
-| server | tsup | ESM | Node 20 | CJS require banner for native modules |
-| dashboard | Vite | ESM | Browsers | React + Tailwind plugins |
+| Package | Tool | Config |
+|---------|------|--------|
+| core | tsup | `tsup.config.ts` — ESM, `better-sqlite3` external |
+| server | tsup | `tsup.config.ts` — ESM, CJS shim for `better-sqlite3` |
+| dashboard | Vite | `vite.config.ts` — React plugin, Tailwind v4, proxy `/api`→`:4000` |
 
 ## Vite Dev Proxy
 
-Config: `packages/dashboard/vite.config.ts`
-
-| Path | Target | Note |
-|------|--------|------|
-| `/api` | `http://localhost:4000` | REST API proxy |
-| `/ws` | `ws://localhost:4000` | WebSocket proxy |
-
-## MCP Integration
-
-Config: `opencode.json`
-
-```json
-{
-  "mcp": {
-    "agent-task-coordinator": {
-      "type": "local",
-      "command": ["node", "packages/server/dist/index.js", "--mcp"]
-    }
-  }
+```typescript
+// dashboard/vite.config.ts
+proxy: {
+  '/api': 'http://localhost:4000',
+  '/ws': { target: 'ws://localhost:4000', ws: true }
 }
 ```
 
-## Drizzle ORM
+## SQLite Pragmas (set in `connection.ts`)
 
-Config: `packages/core/drizzle.config.ts`
+| Pragma | Value | Purpose |
+|--------|-------|---------|
+| `journal_mode` | WAL | Concurrent reads during writes |
+| `busy_timeout` | 5000ms | Wait instead of immediate SQLITE_BUSY |
+| `synchronous` | NORMAL | Balance between safety and speed |
+| `foreign_keys` | ON | Enforce FK constraints |
 
-| Setting | Value |
-|---------|-------|
-| Dialect | SQLite |
-| Schema | `packages/core/src/db/schema.ts` |
-| Migrations | `packages/core/src/db/migrations/` |
-| DB path | `../../data/atc.sqlite` (relative to core) |
+## pnpm Workspace (`pnpm-workspace.yaml`)
+
+```yaml
+packages:
+  - packages/*
+```
+
+## MCP Integration (`opencode.json`)
+
+Configures ATC as MCP server for AI agents. Uses `--mcp` flag for stdio mode.
