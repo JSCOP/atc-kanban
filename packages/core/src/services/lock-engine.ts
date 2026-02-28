@@ -247,10 +247,16 @@ export class LockEngine {
       );
     }
 
-    this.db.update(tasks).set({ status, updatedAt: now }).where(eq(tasks.id, taskId)).run();
+    // Intercept done → review when task requires review
+    let effectiveStatus: TaskStatus = status;
+    if (status === 'done' && task.requiresReview === 1) {
+      effectiveStatus = 'review';
+    }
+
+    this.db.update(tasks).set({ status: effectiveStatus, updatedAt: now }).where(eq(tasks.id, taskId)).run();
 
     // If done or failed, release the lock and handle workspace
-    if (status === 'done' || status === 'failed') {
+    if (effectiveStatus === 'done' || effectiveStatus === 'failed') {
       this.db.delete(taskLocks).where(eq(taskLocks.taskId, taskId)).run();
 
       // Handle workspace cleanup for this task
@@ -283,7 +289,7 @@ export class LockEngine {
     await this.eventBus.publish('STATUS_CHANGED', {
       taskId,
       agentId: task.assignedAgentId ?? undefined,
-      payload: { oldStatus: task.status, newStatus: status },
+      payload: { oldStatus: task.status, newStatus: effectiveStatus },
     });
 
     return this.getTaskDetail(taskId);
@@ -622,6 +628,7 @@ export class LockEngine {
       status: row.status as TaskDetail['status'],
       priority: row.priority as TaskDetail['priority'],
       labels: row.labels ? JSON.parse(row.labels) : [],
+      requiresReview: Boolean(row.requiresReview),
       assignedAgentId: row.assignedAgentId,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,

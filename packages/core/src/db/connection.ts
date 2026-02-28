@@ -201,5 +201,12 @@ export function initializeDatabase(dbPath?: string): ReturnType<typeof drizzle> 
     raw.exec("ALTER TABLE projects ADD COLUMN base_branch TEXT DEFAULT 'main'");
   }
 
+  // ── Task migrations ─────────────────────────────────────────────────────────
+  const taskColumns = raw.prepare("PRAGMA table_info('tasks')").all() as { name: string }[];
+  const taskColNames = new Set(taskColumns.map((c) => c.name));
+  if (!taskColNames.has('requires_review')) {
+    raw.exec('ALTER TABLE tasks ADD COLUMN requires_review INTEGER NOT NULL DEFAULT 1');
+  }
+
   return db;
 }

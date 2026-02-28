@@ -14,6 +14,7 @@ export function CreateTaskModal({ isOpen, onClose, onSuccess }: CreateTaskModalP
   const [description, setDescription] = useState('');
   const [priority, setPriority] = useState<TaskPriority>('medium');
   const [labels, setLabels] = useState('');
+  const [requiresReview, setRequiresReview] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -35,12 +36,14 @@ export function CreateTaskModal({ isOpen, onClose, onSuccess }: CreateTaskModalP
           .map((l) => l.trim())
           .filter(Boolean),
         projectId: selectedProjectId,
+        requiresReview,
       });
 
       setTitle('');
       setDescription('');
       setPriority('medium');
       setLabels('');
+      setRequiresReview(true);
       onSuccess();
       onClose();
     } catch (err) {
@@ -143,6 +146,20 @@ export function CreateTaskModal({ isOpen, onClose, onSuccess }: CreateTaskModalP
                 className="w-full px-4 py-2.5 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 disabled:opacity-50"
               />
             </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <input
+              type="checkbox"
+              id="requiresReview"
+              checked={requiresReview}
+              onChange={(e) => setRequiresReview(e.target.checked)}
+              disabled={loading}
+              className="w-4 h-4 bg-gray-800 border-gray-700 rounded text-blue-600 focus:ring-blue-500 focus:ring-offset-gray-900"
+            />
+            <label htmlFor="requiresReview" className="text-sm text-gray-300">
+              Requires review before completion
+            </label>
           </div>
 
           <div className="flex justify-end gap-3 pt-4">

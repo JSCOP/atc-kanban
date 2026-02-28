@@ -18,8 +18,9 @@ export function registerMainTools(server: McpServer, services: ATCServices) {
       priority: z.enum(['critical', 'high', 'medium', 'low']).optional().describe('Priority level'),
       labels: z.array(z.string()).optional().describe('Task labels/tags'),
       depends_on: z.array(z.string()).optional().describe('Task IDs this task depends on'),
+      requires_review: z.boolean().optional().describe('Whether task requires review before completion (default: true)'),
     },
-    async ({ main_token, title, description, priority, labels, depends_on }) => {
+    async ({ main_token, title, description, priority, labels, depends_on, requires_review }) => {
       const agent = validateMainToken(services, main_token);
 
       const task = await services.taskService.createTask(
@@ -29,6 +30,7 @@ export function registerMainTools(server: McpServer, services: ATCServices) {
           priority,
           labels,
           dependsOn: depends_on,
+          requiresReview: requires_review,
         },
         agent.id,
       );

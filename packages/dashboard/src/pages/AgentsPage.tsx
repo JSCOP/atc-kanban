@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { AgentActivityPanel } from '../components/agents/AgentActivityPanel';
 import { OpenCodeChatPanel } from '../components/agents/OpenCodeChatPanel';
 import { useAgentStore } from '../stores/agent-store';
+import { useWorkspaceStore } from '../stores/workspace-store';
 import type { Agent, DetectedProcess, DiscoveredInstance } from '../types';
 
 const statusColors = {
@@ -460,6 +461,7 @@ export function AgentsPage() {
     renameAgent,
     updateAgentRole,
   } = useAgentStore();
+  const { workspaces, fetchWorkspaces } = useWorkspaceStore();
   const [registerLoading, setRegisterLoading] = useState(false);
   const [spawnLoading, setSpawnLoading] = useState(false);
   const [selectedChatAgentId, setSelectedChatAgentId] = useState<string | null>(null);
@@ -472,13 +474,14 @@ export function AgentsPage() {
   const hasScanRef = useRef(false);
   useEffect(() => {
     fetchAgents();
+    fetchWorkspaces();
     if (!hasScanRef.current) {
       hasScanRef.current = true;
       scanForAgents();
     }
     const interval = setInterval(fetchAgents, 30000);
     return () => clearInterval(interval);
-  }, [fetchAgents, scanForAgents]);
+  }, [fetchAgents, scanForAgents, fetchWorkspaces]);
 
   const handleRegister = async (input: { name: string; serverUrl: string }) => {
     setRegisterLoading(true);
@@ -527,9 +530,26 @@ export function AgentsPage() {
   // TUI-only processes: running but no HTTP server (can't be tracked)
   const tuiOnlyProcesses = detectedProcesses.filter((p) => !p.hasHttpServer);
 
-  const mainAgent = agents.find((a) => a.role === 'main');
-  const workerAgents = agents.filter((a) => a.role === 'worker' && a.connectionType === 'mcp');
-  const opencodeAgents = agents.filter((a) => a.connectionType === 'opencode' && a.role !== 'main');
+  // Group agents by workspace repo → worktree
+  const agentWorkspaceMap = new Map<string, Map<string, Agent[]>>();
+  const unassignedAgents: Agent[] = [];
+
+  for (const agent of agents) {
+    const ws = workspaces.find((w) => w.agentId === agent.id && w.status === 'active');
+    if (ws) {
+      if (!agentWorkspaceMap.has(ws.repoRoot)) {
+        agentWorkspaceMap.set(ws.repoRoot, new Map());
+      }
+      const repoGroup = agentWorkspaceMap.get(ws.repoRoot)!;
+      const worktreeKey = ws.worktreePath;
+      if (!repoGroup.has(worktreeKey)) {
+        repoGroup.set(worktreeKey, []);
+      }
+      repoGroup.get(worktreeKey)!.push(agent);
+    } else {
+      unassignedAgents.push(agent);
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -586,56 +606,97 @@ export function AgentsPage() {
         </div>
       ) : (
         <>
-{mainAgent && (
-            <div>
-              <h2 className="text-lg font-semibold text-white mb-4">Main Agent</h2>
-              <div className="max-w-md">
-                <AgentCard agent={mainAgent} onRemove={removeAgentApi} onRename={handleRename} onActivity={handleActivity} />
-                <button
-                  onClick={() => handleRoleChange(mainAgent.id, 'worker')}
-                  className="mt-2 w-full px-3 py-1.5 bg-gray-600/20 hover:bg-gray-600/30 text-gray-400 text-xs font-medium rounded-lg transition-colors border border-gray-600/30"
-                >
-                  ⬇ Demote to Worker
-                </button>
+          {/* Workspace-grouped agents */}
+          {Array.from(agentWorkspaceMap.entries()).map(([repoRoot, worktreeMap]) => (
+            <div key={repoRoot} className="space-y-4">
+              <div className="flex items-center gap-2">
+                <svg className="w-5 h-5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                </svg>
+                <h2 className="text-lg font-semibold text-white">{repoRoot.split(/[/\\]/).pop()}</h2>
+                <span className="text-xs text-gray-500 font-mono truncate max-w-md" title={repoRoot}>{repoRoot}</span>
               </div>
-            </div>
-          )}
 
-          {workerAgents.length > 0 && (
-            <div>
-              <h2 className="text-lg font-semibold text-white mb-4">
-                MCP Worker Agents ({workerAgents.length})
-              </h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {workerAgents.map((agent) => (
-                  <AgentCard key={agent.id} agent={agent} onRemove={removeAgentApi} onRename={handleRename} onActivity={handleActivity} />
-                ))}
+              {Array.from(worktreeMap.entries()).map(([worktreePath, worktreeAgents]) => (
+                <div key={worktreePath} className="ml-6 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <svg className="w-4 h-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                    <h3 className="text-sm font-medium text-gray-400">
+                      {worktreePath.split(/[/\\]/).pop()}
+                    </h3>
+                    <span className="text-xs text-gray-600 font-mono truncate max-w-sm" title={worktreePath}>{worktreePath}</span>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {worktreeAgents.map((agent) => (
+                      <div key={agent.id}>
+                        <AgentCard
+                          agent={agent}
+                          onRemove={removeAgentApi}
+                          onHealthCheck={agent.connectionType === 'opencode' ? handleHealthCheck : undefined}
+                          onChat={agent.connectionType === 'opencode' && agent.status === 'active' ? handleChat : undefined}
+                          onRename={handleRename}
+                          onActivity={handleActivity}
+                        />
+                        {agent.status === 'active' && agent.role === 'worker' && (
+                          <button
+                            onClick={() => handleRoleChange(agent.id, 'main')}
+                            className="mt-2 w-full px-3 py-1.5 bg-amber-600/20 hover:bg-amber-600/30 text-amber-400 text-xs font-medium rounded-lg transition-colors border border-amber-600/30"
+                          >
+                            ⬆ Promote to Main
+                          </button>
+                        )}
+                        {agent.role === 'main' && (
+                          <button
+                            onClick={() => handleRoleChange(agent.id, 'worker')}
+                            className="mt-2 w-full px-3 py-1.5 bg-gray-600/20 hover:bg-gray-600/30 text-gray-400 text-xs font-medium rounded-lg transition-colors border border-gray-600/30"
+                          >
+                            ⬇ Demote to Worker
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ))}
+
+          {/* Unassigned agents (no workspace) */}
+          {unassignedAgents.length > 0 && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                <svg className="w-5 h-5 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <h2 className="text-lg font-semibold text-gray-400">Unassigned ({unassignedAgents.length})</h2>
               </div>
-            </div>
-          )}
-
-          {opencodeAgents.length > 0 && (
-            <div>
-              <h2 className="text-lg font-semibold text-white mb-4">
-                OpenCode Agents ({opencodeAgents.length})
-              </h2>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {opencodeAgents.map((agent) => (
+                {unassignedAgents.map((agent) => (
                   <div key={agent.id}>
                     <AgentCard
                       agent={agent}
                       onRemove={removeAgentApi}
-                      onHealthCheck={handleHealthCheck}
-                      onChat={handleChat}
+                      onHealthCheck={agent.connectionType === 'opencode' ? handleHealthCheck : undefined}
+                      onChat={agent.connectionType === 'opencode' && agent.status === 'active' ? handleChat : undefined}
                       onRename={handleRename}
                       onActivity={handleActivity}
                     />
-                    {agent.status === 'active' && (
+                    {agent.status === 'active' && agent.role === 'worker' && agent.connectionType === 'opencode' && (
                       <button
                         onClick={() => handleRoleChange(agent.id, 'main')}
                         className="mt-2 w-full px-3 py-1.5 bg-amber-600/20 hover:bg-amber-600/30 text-amber-400 text-xs font-medium rounded-lg transition-colors border border-amber-600/30"
                       >
-                        ⬆ Promote to Main Agent
+                        ⬆ Promote to Main
+                      </button>
+                    )}
+                    {agent.role === 'main' && (
+                      <button
+                        onClick={() => handleRoleChange(agent.id, 'worker')}
+                        className="mt-2 w-full px-3 py-1.5 bg-gray-600/20 hover:bg-gray-600/30 text-gray-400 text-xs font-medium rounded-lg transition-colors border border-gray-600/30"
+                      >
+                        ⬇ Demote to Worker
                       </button>
                     )}
                   </div>

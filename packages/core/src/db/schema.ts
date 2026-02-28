@@ -43,6 +43,7 @@ export const tasks = sqliteTable(
       .notNull()
       .default('medium'),
     labels: text('labels'), // JSON array
+    requiresReview: integer('requires_review').notNull().default(1),
     assignedAgentId: text('assigned_agent_id').references(() => agents.id),
     createdAt: text('created_at')
       .notNull()

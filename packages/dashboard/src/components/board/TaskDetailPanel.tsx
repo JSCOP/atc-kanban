@@ -502,6 +502,16 @@ export function TaskDetailPanel({ taskId, onClose, onTaskUpdated }: TaskDetailPa
                     </div>
                   </div>
                 )}
+                {task.requiresReview && (
+                  <div className="mt-4 pt-4 border-t border-gray-700">
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-blue-500/10 border border-blue-500/20 rounded-lg text-blue-400 text-xs font-medium">
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      Review Required
+                    </span>
+                  </div>
+                )}
               </div>
 
               {/* Workspace Info */}

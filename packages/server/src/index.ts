@@ -51,6 +51,30 @@ if (!isMcpMode) {
   healthChecker = setInterval(() => {
     services.agentRegistry.checkHealth().catch(console.error);
   }, 10000);
+
+  // Auto-dispatch review notifications to main agent
+  services.eventBus.on('STATUS_CHANGED', async (event) => {
+    try {
+      const payload = event.payload as { oldStatus: string; newStatus: string };
+      if (payload.newStatus !== 'review') return;
+
+      // Find active main agent with OpenCode connection
+      const agents = services.agentRegistry.listAgents();
+      const mainAgent = agents.find(
+        (a) => a.role === 'main' && a.status === 'active' && a.connectionType === 'opencode' && a.serverUrl,
+      );
+      if (!mainAgent || !mainAgent.sessionId) return;
+
+      // Get task details for the review message
+      const task = services.taskService.getTask(event.taskId!);
+      const reviewMessage = `[ATC Auto-Review] Task "${task.title}" (${task.id}) has been marked for review. Please review and approve/reject using review_task tool.`;
+
+      await services.opencodeBridge.sendMessage(mainAgent.id, mainAgent.sessionId, reviewMessage);
+      console.log(`[ATC] Auto-dispatched review notification for task ${event.taskId} to main agent ${mainAgent.name}`);
+    } catch (err) {
+      console.error('[ATC] Failed to auto-dispatch review notification:', err);
+    }
+  });
 }
 
 // ── MCP Mode ────────────────────────────────────────────────────────────────

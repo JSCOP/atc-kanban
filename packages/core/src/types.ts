@@ -11,6 +11,7 @@ export interface Task {
   status: TaskStatus;
   priority: TaskPriority;
   labels: string[];
+  requiresReview: boolean;
   assignedAgentId: string | null;
   createdAt: string;
   updatedAt: string;
@@ -29,6 +30,7 @@ export interface CreateTaskInput {
   description?: string;
   priority?: TaskPriority;
   labels?: string[];
+  requiresReview?: boolean;
   dependsOn?: string[];
 }
 

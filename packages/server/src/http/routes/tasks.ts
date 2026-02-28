@@ -42,6 +42,7 @@ export function createTaskRoutes(services: ATCServices) {
       priority: body.priority,
       labels: body.labels,
       dependsOn: body.dependsOn,
+      requiresReview: body.requiresReview,
     });
     return c.json({ task }, 201);
   });
