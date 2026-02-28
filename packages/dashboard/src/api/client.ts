@@ -64,6 +64,13 @@ export const api = {
   deleteTask: (id: string) => fetchApi<{ ok: boolean }>(`/tasks/${id}`, { method: 'DELETE' }),
   forceRelease: (id: string) =>
     fetchApi<{ ok: boolean }>(`/tasks/${id}/force-release`, { method: 'POST' }),
+  adminMoveTask: async (id: string, status: string, reason?: string) => {
+    const res = await fetchApi<{ task: TaskDetail }>(`/tasks/${id}/admin-move`, {
+      method: 'POST',
+      body: JSON.stringify({ status, reason }),
+    });
+    return res.task;
+  },
 
   // Agents
   getAgents: async () => {
@@ -88,6 +95,14 @@ export const api = {
   checkAgentHealth: async (id: string) => {
     const res = await fetchApi<{ agent: Agent }>(`/agents/${id}/health`, { method: 'POST' });
     return res.agent;
+  },
+  getAgentActivity: async (agentId: string, since?: string, limit?: number) => {
+    const params = new URLSearchParams();
+    if (since) params.set('since', since);
+    if (limit) params.set('limit', String(limit));
+    const qs = params.toString();
+    const res = await fetchApi<{ activity: ATCEvent[] }>(`/agents/${agentId}/activity${qs ? `?${qs}` : ''}`);
+    return res.activity;
   },
   getOpenCodeAgentTypes: async (id: string) => {
     const res = await fetchApi<{ agents: { name: string; description?: string }[] }>(

@@ -1,6 +1,6 @@
-import { z } from 'zod';
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { ATCServices } from '@atc/core';
+import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { z } from 'zod';
 
 /**
  * Tracks the agent registered in this MCP session.
@@ -53,8 +53,14 @@ export function registerCommonTools(
         .string()
         .optional()
         .describe('OpenCode session ID for precise agent reconnection matching'),
+      workspace_mode: z
+        .enum(['required', 'disabled'])
+        .optional()
+        .describe(
+          'Workspace mode: "required" (task-based agents) or "disabled" (TUI agents). Defaults to "disabled".',
+        ),
     },
-    async ({ name, role, agent_type, session_id }) => {
+    async ({ name, role, agent_type, session_id, workspace_mode }) => {
       const result = await services.agentRegistry.register({
         name,
         role,
@@ -62,6 +68,7 @@ export function registerCommonTools(
         processId: process.pid,
         cwd: process.cwd(),
         sessionId: session_id,
+        workspaceMode: workspace_mode,
       });
 
       // Track this agent in the session for cleanup on process exit

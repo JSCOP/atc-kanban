@@ -42,6 +42,7 @@ export type {
   AgentStatus,
   AgentType,
   ConnectionType,
+  WorkspaceMode,
   RegisterAgentInput,
   RegisterAgentResult,
   RegisterOpenCodeAgentInput,

@@ -108,6 +108,24 @@ export function createTaskRoutes(services: ATCServices) {
 
     return c.json({ task: services.taskService.getTask(taskId) });
   });
+  // POST /api/tasks/:id/admin-move - Admin override: force-move task to any status
+  app.post('/:id/admin-move', async (c) => {
+    const taskId = c.req.param('id');
+    const body = await c.req.json();
+    const { status, reason } = body as { status: string; reason?: string };
+
+    if (!status) {
+      return c.json({ error: { code: 'INVALID_INPUT', message: 'status is required' } }, 400);
+    }
+
+    const task = await services.lockEngine.adminMoveTask(
+      taskId,
+      status as import('@atc/core').TaskStatus,
+      reason,
+    );
+
+    return c.json({ task });
+  });
 
   // POST /api/tasks/:id/assign - Assign an agent to a task
   app.post('/:id/assign', async (c) => {

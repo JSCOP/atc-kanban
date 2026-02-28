@@ -15,6 +15,7 @@
 | POST | `/:id/sessions` | Create new session |
 | GET | `/:id/sessions/:sid/messages` | Fetch messages from specific session |
 | POST | `/:id/sessions/:sid/messages` | Send message to session |
+| GET | `/:id/activity` | Get unified agent activity (`?since&limit`) |
 | PATCH | `/:id` | Rename agent (`{ name }`) |
 | DELETE | `/:id` | Remove agent (kills spawned process) |
 | POST | `/spawn` | Spawn new OpenCode server (`{ name, cwd, port }`) |
@@ -36,6 +37,7 @@
 | POST | `/:id/review` | Review task (`{ verdict, comment }`) |
 | POST | `/:id/move` | Move task status (dashboard drag-drop) |
 | POST | `/:id/assign` | Assign agent to task (`{ agentId }`) |
+| POST | `/:id/admin-move` | Admin force-move task to any status (`{ status, reason? }`) |
 
 ### Other Routes
 
@@ -63,6 +65,8 @@
 
 `register_agent`, `heartbeat`, `list_tasks`, `get_task`, `list_agents`, `poll_events`
 
+- `register_agent` accepts optional `workspace_mode: 'required' | 'disabled'` (defaults to `'disabled'`)
+
 ### Main-only (orchestrator)
 
 `create_task`, `update_task`, `delete_task`, `set_dependency`, `review_task`, `force_release`, `get_board_summary`, `create_workspace`, `list_workspaces`, `delete_workspace`
@@ -70,6 +74,8 @@
 ### Worker-only (executor)
 
 `claim_task`, `update_status`, `report_progress`, `release_task`, `sync_with_base`
+
+- `claim_task` now forwards agent context (`id`, `cwd`, `workspaceMode`) to lock engine workspace checks
 
 ## WebSocket (`/ws`)
 

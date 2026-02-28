@@ -1,7 +1,7 @@
 import type { ATCServices } from '@atc/core';
 import { Hono } from 'hono';
-import type { OpenCodeSpawner } from '../../services/opencode-spawner.js';
 import type { OpenCodeDiscovery } from '../../services/opencode-discovery.js';
+import type { OpenCodeSpawner } from '../../services/opencode-spawner.js';
 
 export function createAgentRoutes(
   services: ATCServices,
@@ -63,7 +63,10 @@ export function createAgentRoutes(
   app.get('/:id/sessions/:sessionId/messages', async (c) => {
     const agentId = c.req.param('id');
     const sessionId = c.req.param('sessionId');
-    const messages = await services.opencodeBridge.fetchSessionMessagesBySessionId(agentId, sessionId);
+    const messages = await services.opencodeBridge.fetchSessionMessagesBySessionId(
+      agentId,
+      sessionId,
+    );
     return c.json({ messages });
   });
 
@@ -74,6 +77,21 @@ export function createAgentRoutes(
     const body = await c.req.json();
     await services.opencodeBridge.sendMessage(agentId, sessionId, body.message, body.opencodeAgent);
     return c.json({ ok: true }, 201);
+  });
+
+  // GET /api/agents/:id/activity - Get unified activity for any agent (events + progress logs)
+  app.get('/:id/activity', (c) => {
+    const agentId = c.req.param('id');
+    const since = c.req.query('since');
+    const limit = Number.parseInt(c.req.query('limit') || '50', 10);
+
+    const agentEvents = services.eventBus.pollEvents({
+      agentId,
+      since,
+      limit,
+    });
+
+    return c.json({ activity: agentEvents });
   });
 
   // PATCH /api/agents/:id - Update agent (rename)
@@ -144,8 +162,8 @@ export function createAgentRoutes(
       return c.json({ error: 'Discovery not available' }, 503);
     }
     try {
-      const portStart = parseInt(c.req.query('portStart') || '14000', 10);
-      const portEnd = parseInt(c.req.query('portEnd') || '15000', 10);
+      const portStart = Number.parseInt(c.req.query('portStart') || '14000', 10);
+      const portEnd = Number.parseInt(c.req.query('portEnd') || '15000', 10);
       const result = await discovery.scan(portStart, portEnd);
       return c.json(result);
     } catch (err) {

@@ -1,6 +1,6 @@
-import { z } from 'zod';
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { ATCServices } from '@atc/core';
+import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { z } from 'zod';
 import { validateAgentToken } from '../middleware/role-guard.js';
 
 /**
@@ -18,7 +18,10 @@ export function registerWorkerTools(server: McpServer, services: ATCServices) {
     async ({ agent_token, task_id }) => {
       const agent = validateAgentToken(services, agent_token);
 
-      const result = await services.lockEngine.claimTask(agent.id, task_id, agent.cwd ?? undefined);
+      const result = await services.lockEngine.claimTask(
+        { id: agent.id, cwd: agent.cwd, workspaceMode: agent.workspaceMode },
+        task_id,
+      );
 
       return {
         content: [
@@ -138,7 +141,10 @@ export function registerWorkerTools(server: McpServer, services: ATCServices) {
       if (!workspace) {
         return {
           content: [
-            { type: 'text' as const, text: JSON.stringify({ error: 'No active workspace found for this task' }) },
+            {
+              type: 'text' as const,
+              text: JSON.stringify({ error: 'No active workspace found for this task' }),
+            },
           ],
           isError: true,
         };

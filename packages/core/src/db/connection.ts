@@ -72,8 +72,9 @@ export function initializeDatabase(dbPath?: string): ReturnType<typeof drizzle> 
       last_heartbeat  TEXT NOT NULL DEFAULT (datetime('now')),
       process_id      INTEGER,
       cwd             TEXT,
-      session_id      TEXT
-      spawned_pid     INTEGER
+      session_id      TEXT,
+      spawned_pid     INTEGER,
+      workspace_mode  TEXT NOT NULL DEFAULT 'disabled' CHECK(workspace_mode IN ('required','disabled'))
     );
 
     CREATE TABLE IF NOT EXISTS tasks (
@@ -185,6 +186,9 @@ export function initializeDatabase(dbPath?: string): ReturnType<typeof drizzle> 
   }
   if (!agentColNames.has('spawned_pid')) {
     raw.exec('ALTER TABLE agents ADD COLUMN spawned_pid INTEGER');
+  }
+  if (!agentColNames.has('workspace_mode')) {
+    raw.exec("ALTER TABLE agents ADD COLUMN workspace_mode TEXT NOT NULL DEFAULT 'disabled'");
   }
 
   return db;

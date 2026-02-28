@@ -1,8 +1,8 @@
 import { EventEmitter } from 'node:events';
-import { eq, desc, gt, and, inArray } from 'drizzle-orm';
-import type { ATCEvent, EventType } from '../types.js';
-import { events } from '../db/schema.js';
+import { and, desc, eq, gt, inArray } from 'drizzle-orm';
 import type { getConnection } from '../db/connection.js';
+import { events } from '../db/schema.js';
+import type { ATCEvent, EventType } from '../types.js';
 
 type DbType = ReturnType<typeof getConnection>;
 
@@ -63,10 +63,11 @@ export class EventBus extends EventEmitter {
     options: {
       since?: string;
       types?: EventType[];
+      agentId?: string;
       limit?: number;
     } = {},
   ): ATCEvent[] {
-    const { since, types, limit = 50 } = options;
+    const { since, types, agentId, limit = 50 } = options;
 
     const conditions = [];
     if (since) {
@@ -74,6 +75,9 @@ export class EventBus extends EventEmitter {
     }
     if (types && types.length > 0) {
       conditions.push(inArray(events.type, types));
+    }
+    if (agentId) {
+      conditions.push(eq(events.agentId, agentId));
     }
 
     const rows = this.db
@@ -97,7 +101,7 @@ export class EventBus extends EventEmitter {
   /**
    * Get recent events (for board summary, etc.)
    */
-  getRecentEvents(limit: number = 20): ATCEvent[] {
+  getRecentEvents(limit = 20): ATCEvent[] {
     return this.pollEvents({ limit });
   }
 }

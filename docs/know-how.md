@@ -58,6 +58,7 @@ locked → in_progress (worker starts work)
 in_progress → review | done | failed
 review → done (approve) | todo (reject)
 done/failed → todo (re-open from dashboard)
+ANY → ANY (admin-move, bypasses rules, emits ADMIN_OVERRIDE event)
 ```
 
 ## Workspace & Merge Lifecycle
@@ -70,6 +71,18 @@ done/failed → todo (re-open from dashboard)
 | On task failed | Try `removeWorktree` first, fallback to `archiveWorktree` |
 | On lock expiry | Archive workspace (preserve for inspection, don't delete) |
 | `sync_with_base` tool | Worker rebases branch onto latest base — use after merge conflict rejection |
+
+## Workspace Mode
+
+| Mode | When | Behavior |
+|------|------|----------|
+| `required` | Task-based agent sessions | `claimTask` calls `ensureActiveBaseWorkspace` → auto-reactivates archived workspaces → creates worktree |
+| `disabled` | TUI / direct chat sessions | Workspace handling skipped entirely |
+
+- `register_agent` MCP tool accepts optional `workspace_mode` param (defaults to `'disabled'`)
+- `createWorktreeForTask` is idempotent — returns existing workspace if one already exists for taskId
+- `ensureActiveBaseWorkspace` tries active → archived (reactivates) → null (caller must create)
+
 ## Common Mistakes to Avoid
 
 - Don't suppress types: no `as any`, `@ts-ignore`, `@ts-expect-error`

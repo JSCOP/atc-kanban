@@ -10,6 +10,7 @@ import type {
   RegisterAgentInput,
   RegisterAgentResult,
   RegisterOpenCodeAgentInput,
+  WorkspaceMode,
 } from '../types.js';
 import { ATCError } from '../types.js';
 import type { EventBus } from './event-bus.js';
@@ -53,7 +54,7 @@ export class AgentRegistry {
    * - Otherwise → create a new agent.
    */
   async register(input: RegisterAgentInput): Promise<RegisterAgentResult> {
-    const { name, role, agentType, processId, cwd, sessionId } = input;
+    const { name, role, agentType, processId, cwd, sessionId, workspaceMode } = input;
     const now = new Date().toISOString();
 
     // 1a. If sessionId provided, try exact session match first (most precise)
@@ -147,6 +148,7 @@ export class AgentRegistry {
         processId: processId ?? null,
         cwd: cwd ?? null,
         sessionId: sessionId ?? null,
+        workspaceMode: workspaceMode ?? 'disabled',
       })
       .run();
 
@@ -286,7 +288,11 @@ export class AgentRegistry {
     }
 
     // Clean up all FK references before deleting the agent row
-    this.db.update(tasks).set({ assignedAgentId: null }).where(eq(tasks.assignedAgentId, agentId)).run();
+    this.db
+      .update(tasks)
+      .set({ assignedAgentId: null })
+      .where(eq(tasks.assignedAgentId, agentId))
+      .run();
     this.db.delete(taskComments).where(eq(taskComments.agentId, agentId)).run();
     this.db.delete(progressLogs).where(eq(progressLogs.agentId, agentId)).run();
     this.db.update(workspaces).set({ agentId: null }).where(eq(workspaces.agentId, agentId)).run();
@@ -451,6 +457,7 @@ export class AgentRegistry {
         status: 'active',
         connectedAt: now,
         lastHeartbeat: now,
+        workspaceMode: 'disabled',
       })
       .run();
 
@@ -540,6 +547,7 @@ export class AgentRegistry {
       cwd: row.cwd,
       sessionId: row.sessionId ?? null,
       spawnedPid: row.spawnedPid ?? null,
+      workspaceMode: (row.workspaceMode ?? 'disabled') as WorkspaceMode,
     };
   }
 }

@@ -98,6 +98,9 @@ export const agents = sqliteTable(
     cwd: text('cwd'),
     sessionId: text('session_id'),
     spawnedPid: integer('spawned_pid'),
+    workspaceMode: text('workspace_mode', { enum: ['required', 'disabled'] })
+      .notNull()
+      .default('disabled'),
   },
   (table) => [
     uniqueIndex('idx_unique_active_main')

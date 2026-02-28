@@ -2,6 +2,25 @@
 - [ ] Investigate git worktree Windows failures (worker agent `export` command issue)
 
 ## Completed
+- [x] Fix 3 architecture problems: workspace claim, agent activity visibility, admin task override
+  - Done: Added `workspaceMode` to agents (required/disabled), refactored `claimTask` to use `ensureActiveBaseWorkspace`, added `AgentActivityPanel` for all agent types, added `adminMoveTask` with Danger Zone UI, added `POST /api/tasks/:id/admin-move` endpoint
+  - Files changed: 18 files across core/server/dashboard (types, schema, migration, lock-engine, workspace-service, agent-registry, event-bus, MCP tools, REST routes, dashboard components)
+- [x] Update MCP tools for workspaceMode architecture wiring
+  - Done: Added optional `workspace_mode` to `register_agent` MCP schema and forwarded it to `agentRegistry.register()`. Updated `claim_task` to pass `{ id, cwd, workspaceMode }` agent context into `lockEngine.claimTask()`.
+  - Next: Remove temporary compatibility handling once all callers and lock engine signatures are fully rolled out in subsequent waves.
+  - Blocker: none
+- [x] Add agent-scoped activity retrieval (core EventBus + agents route)
+  - Done: Added optional `agentId` filter to `EventBus.pollEvents()` and added `GET /api/agents/:id/activity` returning filtered activity with `since` and `limit` support.
+  - Next: Extend endpoint to include progress log rows if/when service contract is introduced.
+  - Blocker: none
+- [x] Add workspace_mode to core agents schema/types/migration/exports
+  - Done: Added `WorkspaceMode` type, `Agent.workspaceMode`, optional `RegisterAgentInput.workspaceMode`, `ADMIN_OVERRIDE` event type, `agents.workspace_mode` schema column, pragmatic ALTER TABLE migration, and `WorkspaceMode` re-export.
+  - Next: Enforce `workspaceMode` during task claim/dispatch runtime checks.
+  - Blocker: none
+- [x] Wire workspaceMode through `AgentRegistry` registration mapping
+  - Done: Updated `register()` to persist `workspaceMode`, `registerOpenCodeAgent()` to force `'disabled'`, and `mapAgent()` to map DB `workspaceMode` to `Agent`.
+  - Next: Validate server/MCP request paths that create agents pass intended `workspaceMode` values.
+  - Blocker: none
 - [x] Add workspace lifecycle methods and types for merge/archive/sync support
   - Done: Added `MergeResult` + `SyncResult`, extended `EventType`, re-exported new types,
     implemented `findByTaskId`, `archiveWorktree`, `mergeWorktree`, and `syncWithBase`.

@@ -45,6 +45,7 @@ export type AgentRole = 'main' | 'worker';
 export type AgentStatus = 'active' | 'disconnected';
 export type AgentType = 'claude_code' | 'codex' | 'gemini' | 'opencode' | 'custom';
 export type ConnectionType = 'mcp' | 'opencode';
+export type WorkspaceMode = 'required' | 'disabled';
 
 export interface Agent {
   id: string;
@@ -61,6 +62,7 @@ export interface Agent {
   cwd: string | null;
   sessionId: string | null;
   spawnedPid: number | null;
+  workspaceMode: WorkspaceMode;
 }
 
 export interface AgentInfo extends Agent {
@@ -77,6 +79,7 @@ export interface RegisterAgentInput {
   processId?: number;
   cwd?: string;
   sessionId?: string;
+  workspaceMode?: WorkspaceMode;
 }
 
 export interface RegisterOpenCodeAgentInput {
@@ -122,7 +125,8 @@ export type EventType =
   | 'WORKSPACE_CREATED'
   | 'WORKSPACE_MERGED'
   | 'WORKSPACE_ARCHIVED'
-  | 'WORKSPACE_DELETED';
+  | 'WORKSPACE_DELETED'
+  | 'ADMIN_OVERRIDE';
 
 export interface ATCEvent {
   id: number;

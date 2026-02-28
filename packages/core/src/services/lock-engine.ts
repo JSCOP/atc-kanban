@@ -1,12 +1,12 @@
-import { eq, and, lt } from 'drizzle-orm';
+import { and, eq, lt } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
-import { tasks, taskLocks, progressLogs } from '../db/schema.js';
-import { getRawDb, type getConnection } from '../db/connection.js';
-import type { EventBus } from './event-bus.js';
-import type { DependencyResolver } from './dependency-resolver.js';
-import type { WorkspaceService } from './workspace-service.js';
+import { type getConnection, getRawDb } from '../db/connection.js';
+import { progressLogs, taskLocks, tasks } from '../db/schema.js';
 import type { ClaimResult, MergeResult, TaskDetail, TaskStatus } from '../types.js';
 import { ATCError } from '../types.js';
+import type { DependencyResolver } from './dependency-resolver.js';
+import type { EventBus } from './event-bus.js';
+import type { WorkspaceService } from './workspace-service.js';
 
 type DbType = ReturnType<typeof getConnection>;
 
@@ -22,7 +22,7 @@ export class LockEngine {
     db: DbType,
     eventBus: EventBus,
     dependencyResolver: DependencyResolver,
-    lockTtlMinutes: number = 30,
+    lockTtlMinutes = 30,
   ) {
     this.db = db;
     this.eventBus = eventBus;
@@ -41,29 +41,39 @@ export class LockEngine {
   /**
    * Claim a task atomically using SQLite BEGIN IMMEDIATE.
    */
-  async claimTask(agentId: string, taskId: string, agentCwd?: string): Promise<ClaimResult> {
+  async claimTask(
+    agent: { id: string; cwd: string | null; workspaceMode: 'required' | 'disabled' },
+    taskId: string,
+  ): Promise<ClaimResult> {
     const raw = getRawDb();
     const lockToken = uuidv4();
     const now = new Date().toISOString();
     const expiresAt = new Date(Date.now() + this.lockTtlMinutes * 60 * 1000).toISOString();
 
-    // Workspace validation: workers must be in a registered workspace
+    // Workspace handling based on agent's workspaceMode
     let claimedWorkspace: { worktreePath: string; branchName: string } | undefined;
-    if (agentCwd && this.workspaceService) {
-      const workspace = this.workspaceService.findWorkspaceForCwd(agentCwd);
-      if (!workspace) {
+    if (agent.workspaceMode === 'required' && this.workspaceService) {
+      if (!agent.cwd) {
         throw new ATCError(
           'WORKSPACE_NOT_FOUND',
-          `No registered workspace found for agent directory: ${agentCwd}. Register a workspace first.`,
+          'Agent has workspaceMode=required but no cwd set. Cannot resolve workspace.',
           403,
         );
       }
-      // Create a worktree for this task
+      const workspace = this.workspaceService.ensureActiveBaseWorkspace(agent.cwd);
+      if (!workspace) {
+        throw new ATCError(
+          'WORKSPACE_NOT_FOUND',
+          `No workspace found for agent directory: ${agent.cwd}. Register a workspace first.`,
+          403,
+        );
+      }
+      // Create a worktree for this task (idempotent)
       const worktree = await this.workspaceService.createWorktreeForTask(
         workspace.repoRoot,
         workspace.baseBranch,
         taskId,
-        agentId,
+        agent.id,
       );
       claimedWorkspace = { worktreePath: worktree.worktreePath, branchName: worktree.branchName };
     }
@@ -143,12 +153,12 @@ export class LockEngine {
         .prepare(
           'INSERT INTO task_locks (task_id, agent_id, lock_token, locked_at, expires_at) VALUES (?, ?, ?, ?, ?)',
         )
-        .run(taskId, agentId, lockToken, now, expiresAt);
+        .run(taskId, agent.id, lockToken, now, expiresAt);
 
       // 6. Update task status
       raw
         .prepare('UPDATE tasks SET status = ?, assigned_agent_id = ?, updated_at = ? WHERE id = ?')
-        .run('in_progress', agentId, now, taskId);
+        .run('in_progress', agent.id, now, taskId);
     });
 
     claimTxn();
@@ -156,7 +166,7 @@ export class LockEngine {
     // Emit event through EventBus (for WebSocket broadcasting)
     await this.eventBus.publish('TASK_CLAIMED', {
       taskId,
-      agentId,
+      agentId: agent.id,
       payload: { lockToken },
     });
 
@@ -393,6 +403,60 @@ export class LockEngine {
 
     return { mergeResult };
   }
+
+  /**
+   * Admin override: force-move a task to any status.
+   * Bypasses normal transition rules. Used by dashboard Danger Zone.
+   */
+  async adminMoveTask(taskId: string, newStatus: TaskStatus, reason?: string): Promise<TaskDetail> {
+    const task = this.db.select().from(tasks).where(eq(tasks.id, taskId)).get();
+    if (!task) {
+      throw new ATCError('TASK_NOT_FOUND', `Task ${taskId} not found`, 404);
+    }
+
+    const oldStatus = task.status as TaskStatus;
+    if (oldStatus === newStatus) {
+      throw new ATCError(
+        'INVALID_TRANSITION',
+        `Task ${taskId} is already in '${newStatus}' status`,
+      );
+    }
+
+    const now = new Date().toISOString();
+
+    // If moving to 'todo', clear assignment and release any lock
+    if (newStatus === 'todo') {
+      this.db.delete(taskLocks).where(eq(taskLocks.taskId, taskId)).run();
+      this.db
+        .update(tasks)
+        .set({ status: newStatus, assignedAgentId: null, updatedAt: now })
+        .where(eq(tasks.id, taskId))
+        .run();
+    } else {
+      this.db
+        .update(tasks)
+        .set({ status: newStatus, updatedAt: now })
+        .where(eq(tasks.id, taskId))
+        .run();
+    }
+
+    // Release lock for any terminal status
+    if (newStatus === 'done' || newStatus === 'failed') {
+      this.db.delete(taskLocks).where(eq(taskLocks.taskId, taskId)).run();
+    }
+
+    await this.eventBus.publish('ADMIN_OVERRIDE', {
+      taskId,
+      payload: {
+        oldStatus,
+        newStatus,
+        reason: reason || 'Admin override from dashboard',
+      },
+    });
+
+    return this.getTaskDetail(taskId);
+  }
+
   /**
    * Check and expire stale locks. Run periodically.
    */
@@ -433,7 +497,7 @@ export class LockEngine {
   /**
    * Start periodic lock expiry checker.
    */
-  startExpiryChecker(intervalMs: number = 30000): void {
+  startExpiryChecker(intervalMs = 30000): void {
     this.expiryInterval = setInterval(() => {
       this.checkExpiredLocks().catch(console.error);
     }, intervalMs);

@@ -200,6 +200,13 @@ export class WorkspaceService {
     agentId: string,
   ): Promise<Workspace> {
     const normalizedRepoRoot = this.normalizePath(repoRoot);
+
+    // Idempotent: if an active workspace already exists for this task, return it
+    const existingForTask = this.findByTaskId(taskId);
+    if (existingForTask) {
+      return existingForTask;
+    }
+
     const shortId = taskId.slice(0, 8);
     const branchName = `task/${shortId}`;
     const worktreePath = `${normalizedRepoRoot}/.worktrees/task-${shortId}`;
@@ -337,6 +344,79 @@ export class WorkspaceService {
     await this.eventBus.publish('WORKSPACE_ARCHIVED', {
       payload: { workspaceId, repoRoot: workspace.repoRoot, branchName: workspace.branchName },
     });
+  }
+
+  /**
+   * Reactivate an archived workspace (set status back to active).
+   */
+  async reactivateWorkspace(workspaceId: string): Promise<Workspace> {
+    const workspace = this.getWorkspace(workspaceId);
+    if (workspace.status !== 'archived') {
+      throw new ATCError(
+        'INVALID_WORKSPACE_STATUS',
+        `Workspace ${workspaceId} is not archived (current: ${workspace.status})`,
+        400,
+      );
+    }
+
+    this.db
+      .update(workspaces)
+      .set({ status: 'active' })
+      .where(eq(workspaces.id, workspaceId))
+      .run();
+
+    return this.getWorkspace(workspaceId);
+  }
+
+  /**
+   * Find or reactivate a base workspace for a given repoRoot.
+   * Returns the active base workspace, or reactivates an archived one if available.
+   * Returns null if no workspace exists at all (caller must create one).
+   */
+  ensureActiveBaseWorkspace(repoRoot: string): Workspace | null {
+    const normalizedRoot = this.normalizePath(repoRoot);
+
+    // 1. Try to find an active base workspace (no taskId)
+    const active = this.db
+      .select()
+      .from(workspaces)
+      .where(
+        and(
+          eq(workspaces.repoRoot, normalizedRoot),
+          eq(workspaces.status, 'active'),
+          isNull(workspaces.taskId),
+        ),
+      )
+      .get();
+
+    if (active) {
+      return this.rowToWorkspace(active);
+    }
+
+    // 2. Try to reactivate an archived base workspace
+    const archived = this.db
+      .select()
+      .from(workspaces)
+      .where(
+        and(
+          eq(workspaces.repoRoot, normalizedRoot),
+          eq(workspaces.status, 'archived'),
+          isNull(workspaces.taskId),
+        ),
+      )
+      .get();
+
+    if (archived) {
+      this.db
+        .update(workspaces)
+        .set({ status: 'active' })
+        .where(eq(workspaces.id, archived.id))
+        .run();
+      return this.getWorkspace(archived.id);
+    }
+
+    // 3. No base workspace found — caller must create one
+    return null;
   }
 
   async mergeWorktree(workspaceId: string): Promise<MergeResult> {

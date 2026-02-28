@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { AgentActivityPanel } from '../components/agents/AgentActivityPanel';
 import { OpenCodeChatPanel } from '../components/agents/OpenCodeChatPanel';
 import { useAgentStore } from '../stores/agent-store';
 import type { Agent, DetectedProcess, DiscoveredInstance } from '../types';
@@ -48,12 +49,14 @@ function AgentCard({
   onRemove,
   onHealthCheck,
   onChat,
+  onActivity,
   onRename,
 }: {
   agent: Agent;
   onRemove: (id: string) => void;
   onHealthCheck?: (id: string) => void;
   onChat?: (id: string) => void;
+  onActivity?: (id: string) => void;
   onRename?: (id: string, newName: string) => void;
 }) {
   const isMain = agent.role === 'main';
@@ -250,6 +253,21 @@ function AgentCard({
           </>
         )}
       </div>
+
+      {/* Activity button — available for all agents */}
+      {onActivity && (
+        <div className="mt-4 pt-4 border-t border-gray-800">
+          <button
+            onClick={() => onActivity(agent.id)}
+            className="text-xs px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg transition-colors flex items-center gap-1"
+          >
+            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+            </svg>
+            Activity
+          </button>
+        </div>
+      )}
 
       {isOpenCode && agent.serverUrl && (
         <p className="text-xs text-gray-600 mt-2">
@@ -454,8 +472,10 @@ export function AgentsPage() {
   const [registerLoading, setRegisterLoading] = useState(false);
   const [spawnLoading, setSpawnLoading] = useState(false);
   const [selectedChatAgentId, setSelectedChatAgentId] = useState<string | null>(null);
+  const [selectedActivityAgentId, setSelectedActivityAgentId] = useState<string | null>(null);
 
   const selectedChatAgent = agents.find((a) => a.id === selectedChatAgentId);
+  const selectedActivityAgent = agents.find((a) => a.id === selectedActivityAgentId);
 
   // Auto-scan once on mount
   const hasScanRef = useRef(false);
@@ -484,6 +504,10 @@ export function AgentsPage() {
 
   const handleChat = (agentId: string) => {
     setSelectedChatAgentId(agentId);
+  };
+
+  const handleActivity = (agentId: string) => {
+    setSelectedActivityAgentId(agentId);
   };
 
   const handleSpawn = async (input: { name: string; cwd: string }) => {
@@ -571,7 +595,7 @@ export function AgentsPage() {
             <div>
               <h2 className="text-lg font-semibold text-white mb-4">Main Agent</h2>
               <div className="max-w-md">
-                <AgentCard agent={mainAgent} onRemove={removeAgentApi} onRename={handleRename} />
+                <AgentCard agent={mainAgent} onRemove={removeAgentApi} onRename={handleRename} onActivity={handleActivity} />
               </div>
             </div>
           )}
@@ -583,7 +607,7 @@ export function AgentsPage() {
               </h2>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {workerAgents.map((agent) => (
-                  <AgentCard key={agent.id} agent={agent} onRemove={removeAgentApi} onRename={handleRename} />
+                  <AgentCard key={agent.id} agent={agent} onRemove={removeAgentApi} onRename={handleRename} onActivity={handleActivity} />
                 ))}
               </div>
             </div>
@@ -603,6 +627,7 @@ export function AgentsPage() {
                     onHealthCheck={handleHealthCheck}
                     onChat={handleChat}
                     onRename={handleRename}
+                    onActivity={handleActivity}
                   />
                 ))}
               </div>
@@ -705,6 +730,10 @@ export function AgentsPage() {
 
       {selectedChatAgent && (
         <OpenCodeChatPanel agent={selectedChatAgent} onClose={() => setSelectedChatAgentId(null)} />
+      )}
+
+      {selectedActivityAgent && (
+        <AgentActivityPanel agent={selectedActivityAgent} onClose={() => setSelectedActivityAgentId(null)} />
       )}
     </div>
   );

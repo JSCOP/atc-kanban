@@ -34,6 +34,7 @@ connection_type: 'mcp' | 'opencode'
 status:          'active' | 'disconnected'
 process_id:      INTEGER (for PID-based health checks)
 spawned_pid:     INTEGER (for spawned OpenCode processes)
+workspace_mode:  'required' | 'disabled' (task workspace requirement)
 ```
 
 ### task_locks
