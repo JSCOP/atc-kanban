@@ -2,6 +2,12 @@
 - [ ] Investigate git worktree Windows failures (worker agent `export` command issue)
 
 ## Completed
+- [x] Add Playwright E2E coverage for admin features
+  - Done: Added `tests/e2e/admin-features.spec.ts` with 3 tests for Danger Zone admin force-move, Agent Activity panel opening, and admin-move clearing `assigned_agent_id` when moved to `todo`.
+  - Verification: `pnpm exec playwright test --list tests/e2e/admin-features.spec.ts` (3 tests listed)
+- [x] Add Vitest HTTP integration tests for new server endpoints
+  - Done: Added `packages/server/src/http/routes/__tests__/new-endpoints.test.ts` with 9 tests covering admin task override and agent activity endpoints.
+  - Verification: `npx vitest run packages/server/src/http/routes/__tests__/new-endpoints.test.ts --reporter=verbose` (pass)
 - [x] Fix 3 architecture problems: workspace claim, agent activity visibility, admin task override
   - Done: Added `workspaceMode` to agents (required/disabled), refactored `claimTask` to use `ensureActiveBaseWorkspace`, added `AgentActivityPanel` for all agent types, added `adminMoveTask` with Danger Zone UI, added `POST /api/tasks/:id/admin-move` endpoint
   - Files changed: 18 files across core/server/dashboard (types, schema, migration, lock-engine, workspace-service, agent-registry, event-bus, MCP tools, REST routes, dashboard components)
