@@ -181,6 +181,10 @@ export const api = {
     const res = await fetchApi<{ workspaces: Workspace[] }>(`/workspaces${params}`);
     return res.workspaces;
   },
+  getWorkspaceForTask: async (taskId: string) => {
+    const res = await fetchApi<{ workspace: Workspace | null }>(`/workspaces/by-task/${taskId}`);
+    return res.workspace;
+  },
 
   // Dispatch
   dispatchTask: async (input: DispatchTaskInput) => {

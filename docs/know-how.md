@@ -1,91 +1,78 @@
-# Know-How
+# Know-How (Gotchas & Workarounds)
 
-## ESM-Only Codebase
-
-| Issue | Solution |
-|-------|----------|
-| `require()` fails | ESM-only — use `import`. Server tsup has CJS shim for `better-sqlite3` only |
-| Import paths | Use `.js` extension in core+server: `import { X } from './foo.js'` |
-| `__dirname` unavailable | Use `import.meta.url` + `fileURLToPath` if needed |
-
-## better-sqlite3 (Native Module)
+## ESM Quirks
 
 | Issue | Solution |
 |-------|----------|
-| Bundle fails | Marked as `external` in both tsup configs — never bundled |
-| CJS in ESM | Server's `tsup.config.ts` adds `createRequire` banner automatically |
-| Rebuild needed | After Node version change: `pnpm rebuild better-sqlite3` |
+| Import extensions required in core/server | Always use `.js` extension: `import { foo } from './bar.js'` |
+| `better-sqlite3` is native (CJS) | Server's `tsup.config.ts` has a CJS shim — don't add another |
+| No `require()` anywhere | ESM-only codebase — use dynamic `import()` if needed |
 
-## MCP stdio Pitfalls
+## MCP Stdout Restriction
 
-| Issue | Solution |
-|-------|----------|
-| Output corrupts MCP | **Never** `console.log()` in MCP mode — stdout IS the transport |
-| Use `console.error()` | All server diagnostics go to stderr |
-| Agent cleanup | MCP server hooks stdin EOF + SIGINT/SIGTERM → auto-disconnect agent + release locks |
-| Session tracking | `McpSessionTracker` stores agentId per session for cleanup |
+**CRITICAL**: In MCP mode (`--mcp`), `stdout` IS the MCP transport. Any `console.log()` corrupts the protocol.
 
-## Lock & Health System
-
-| Behavior | Detail |
-|----------|--------|
-| Lock TTL | 30 min default. `report_progress` refreshes timer |
-| Expiry check | Every 30s. Expired → task reverts to `todo`, `LOCK_EXPIRED` event |
-| PID health | Every 10s. Dead process → agent disconnected + all locks released |
-| Main agent | Max 1 active. Enforced in AgentRegistry service layer |
-| Worker stall | Must call `report_progress` every 5 min (recommended) or risk lock expiry |
-
-## OpenCode Discovery
-
-| Topic | Detail |
-|-------|--------|
-| TUI + HTTP server | CLI `--port 0` (auto-port) or config `server.mdns: true` enables HTTP in TUI mode |
-| Config schema | `server.port` requires `exclusiveMinimum: 0` — `port: 0` is invalid in config. Use CLI `--port 0` instead |
-| Multi-instance | Auto-port assigns random ports in ~14000-15000 range (OS-dependent). First tries 4096, rest random |
-| opencode.json ref | Schema: `https://opencode.ai/config.json`. Fields: `port`, `hostname`, `mdns`, `mdnsDomain`, `cors` |
-| Discoverable modes | `opencode serve`, `opencode --port N`, `opencode web`, TUI with `--port`/`--mdns` flag |
-| Port scan range | `[4096]` priority, then `14000-14100` fallback range. PID→Port mapping catches ports outside range |
-| PID→Port mapping | `netstat -ano` (Win) / `ss -tlnp` (Unix) resolves random ports from detected PIDs |
-| Process detection | `wmic` (Win) / `ps` (Unix) — filters out LSP subprocesses (`typescript-language-server`) |
-| Health probe | `GET /global/health` → `{ healthy: true, version: "1.2.15" }` with 500ms timeout |
-| Windows port exclusions | Hyper-V reserves dynamic ranges (check `netsh interface ipv4 show excludedportrange`) |
-
-## Dashboard Dev Proxy
-
-| Issue | Solution |
-|-------|----------|
-| CORS in dev | Vite proxies `/api` and `/ws` to `:4000` — no CORS issues |
-| WS connection | Single connection via `useWebSocket` hook — don't create additional |
-| State sync | WS events dispatch to Zustand stores automatically |
+- Use `console.error()` for all diagnostics in server code
+- MCP tools must return structured `{ content: [{ type: 'text', text }] }` only
 
 ## Database Gotchas
 
 | Issue | Solution |
 |-------|----------|
-| Timestamps | Always `.$defaultFn(() => new Date().toISOString())`, never static `.default()` |
-| JSON fields | `labels` and `payload` are text columns — parse/stringify in service layer |
-| Unique main | Partial unique index doesn't work in Drizzle — enforced in service layer instead |
-| No migrations | Use `initializeDatabase()` in `connection.ts` with `ALTER TABLE` pragmatic checks |
-| FK cleanup | `deleteTask()` cleans `taskDependencies`, `workspaces` before task delete. `removeById()` cleans agent refs. |
+| Labels stored as JSON string | Service layer parses `tasks.labels` — don't query directly |
+| No migration files needed | Use `initializeDatabase()` with `ALTER TABLE` pragma checks |
+| Timestamps are text | ISO 8601 strings via `.$defaultFn(() => new Date().toISOString())` |
+| Partial unique index hack | `idx_unique_active_main` uses `undefined` cast — enforced in service layer instead |
 
-## Task Status Flow
+## Service Layer Rules
+
+| Rule | Detail |
+|------|--------|
+| Single entry point | Always use `createServices()` — never instantiate services directly |
+| Circular dep workaround | `lockEngine.setWorkspaceService()` called post-construction |
+| Import direction | core → nothing; server → core; dashboard → neither (HTTP only) |
+| `drizzle-orm` in server | Import `eq` from `@atc/core` which re-exports it — never import `drizzle-orm` directly |
+
+## Dashboard Patterns
+
+| Pattern | Detail |
+|---------|--------|
+| API calls | Always through `src/api/client.ts` — never direct fetch |
+| WebSocket | Single connection via `useWebSocket` hook — never create additional |
+| State | Zustand stores only — no Context or Redux |
+| Styling | Tailwind v4 utility classes — no CSS modules or styled-components |
+
+## OpenCode Integration
+
+| Gotcha | Detail |
+|--------|--------|
+| TUI mode has no HTTP | Only `opencode serve` or `opencode --port N` are discoverable |
+| Port scan range | Default: 4096 + 14000-14100 for OpenCode discovery |
+| Spawner tracks PIDs | Only spawned processes are killed on DELETE — manually registered agents untouched |
+
+## Task Status Transitions
 
 ```
-todo → locked (claim_task) → in_progress → review → done
-                                  ↓              ↓
-                                failed      rejected → todo
-                                  ↓
-Lock expired/released → todo
+todo → locked (claim_task acquires lock)
+locked → in_progress (worker starts work)
+in_progress → review | done | failed
+review → done (approve) | todo (reject)
+done/failed → todo (re-open from dashboard)
 ```
 
-## Server drizzle-orm Import Rule
+## Workspace & Merge Lifecycle
 
-Server must NOT import `drizzle-orm` directly. Import `eq` from `@atc/core` which re-exports it:
+| Behavior | Detail |
+|----------|--------|
+| Merge strategy | Squash merge via temp detached worktree (avoids `git checkout` conflicts) |
+| Conflict pre-check | Uses `git merge-tree --write-tree` before actual merge (fallback for old git) |
+| On approve (review→done) | Auto squash-merge workspace branch into base, then archive worktree |
+| On task failed | Try `removeWorktree` first, fallback to `archiveWorktree` |
+| On lock expiry | Archive workspace (preserve for inspection, don't delete) |
+| `sync_with_base` tool | Worker rebases branch onto latest base — use after merge conflict rejection |
+## Common Mistakes to Avoid
 
-```typescript
-// CORRECT (server code)
-import { eq, schema } from '@atc/core';
-
-// WRONG (server code)
-import { eq } from 'drizzle-orm';
-```
+- Don't suppress types: no `as any`, `@ts-ignore`, `@ts-expect-error`
+- Don't use static `.default(new Date().toISOString())` — use `.$defaultFn()`
+- Don't bypass service layer for DB writes
+- Don't generate DB migrations — use pragmatic ALTER TABLE approach

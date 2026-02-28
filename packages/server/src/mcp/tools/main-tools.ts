@@ -136,7 +136,7 @@ export function registerMainTools(server: McpServer, services: ATCServices) {
     },
     async ({ main_token, task_id, verdict, comment }) => {
       const agent = validateMainToken(services, main_token);
-      await services.lockEngine.reviewTask(task_id, verdict, comment, agent.id);
+      const result = await services.lockEngine.reviewTask(task_id, verdict, comment, agent.id);
 
       const task = services.taskService.getTask(task_id);
 
@@ -144,7 +144,7 @@ export function registerMainTools(server: McpServer, services: ATCServices) {
         content: [
           {
             type: 'text' as const,
-            text: JSON.stringify({ task }, null, 2),
+            text: JSON.stringify({ task, mergeResult: result.mergeResult ?? null }, null, 2),
           },
         ],
       };

@@ -56,6 +56,8 @@ export type {
   Workspace,
   WorkspaceStatus,
   CreateWorkspaceInput,
+  MergeResult,
+  SyncResult,
   DispatchTaskInput,
   DispatchResult,
   OpenCodeMessage,

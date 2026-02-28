@@ -120,6 +120,8 @@ export type EventType =
   | 'AGENT_DISCONNECTED'
   | 'LOCK_EXPIRED'
   | 'WORKSPACE_CREATED'
+  | 'WORKSPACE_MERGED'
+  | 'WORKSPACE_ARCHIVED'
   | 'WORKSPACE_DELETED';
 
 export interface ATCEvent {
@@ -203,6 +205,17 @@ export interface Workspace {
 export interface CreateWorkspaceInput {
   repoRoot: string;
   baseBranch?: string;
+}
+
+export interface MergeResult {
+  merged: boolean;
+  commitHash?: string;
+  conflictDetails?: string;
+}
+
+export interface SyncResult {
+  synced: boolean;
+  conflictDetails?: string;
 }
 
 // ── OpenCode Dispatch Types ──────────────────────────────────────────────

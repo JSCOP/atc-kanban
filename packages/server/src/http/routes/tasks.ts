@@ -77,8 +77,8 @@ export function createTaskRoutes(services: ATCServices) {
   app.post('/:id/review', async (c) => {
     const taskId = c.req.param('id');
     const body = await c.req.json();
-    await services.lockEngine.reviewTask(taskId, body.verdict, body.comment);
-    return c.json({ ok: true });
+    const result = await services.lockEngine.reviewTask(taskId, body.verdict, body.comment);
+    return c.json({ ok: true, mergeResult: result.mergeResult ?? null });
   });
 
   // POST /api/tasks/:id/move - Move task status (dashboard drag-and-drop)

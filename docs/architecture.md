@@ -2,96 +2,79 @@
 
 ## Overview
 
-| Aspect | Detail |
-|--------|--------|
-| Type | pnpm monorepo, 3 packages |
-| Backend | Hono HTTP + WebSocket + MCP stdio |
-| Frontend | React 19 SPA (Vite + Tailwind v4) |
-| Database | SQLite via Drizzle ORM (better-sqlite3) |
-| State | Zustand (frontend), service container (backend) |
+Agent Task Coordinator (ATC) — multi-agent kanban orchestration system. pnpm monorepo with 3 packages sharing a SQLite-backed core.
 
 ## Package Dependency Graph
 
 ```
-@atc/dashboard  (standalone SPA, no code imports from other packages)
-       ↓ HTTP/WS at runtime
-@atc/server     (imports @atc/core via workspace:*)
-       ↓
-@atc/core       (zero upstream deps)
+@atc/dashboard (React 19 SPA)
+    ↓ HTTP/WS only (no code imports)
+@atc/server (Hono API + WS + MCP)
+    ↓ workspace:*
+@atc/core (Drizzle ORM + domain services)
+    ↓
+SQLite (better-sqlite3, WAL mode)
 ```
 
-## Service Container
+## Package Responsibilities
 
-`createServices()` in `packages/core/src/index.ts` — manual constructor injection, no DI framework.
+| Package | Runtime | Purpose | Entry |
+|---------|---------|---------|-------|
+| `core` | Node | DB schema (9 tables), 9 domain services, types, ATCError | `src/index.ts` → `createServices()` |
+| `server` | Node | REST API (8 route files), WebSocket broadcast, MCP stdio, OpenCode spawner/discovery | `src/index.ts` |
+| `dashboard` | Browser | Kanban board, agent management, event log, task detail | `src/main.tsx` |
 
-| Service | Responsibility | Key Dependencies |
-|---------|---------------|------------------|
-| EventBus | Event recording + in-memory pub/sub | db |
-| AgentRegistry | Agent CRUD + PID health checking | db, eventBus |
-| RoleManager | Main/worker role enforcement (max 1 main) | agentRegistry |
-| DependencyResolver | Task DAG validation, cycle detection | db |
-| TaskService | Task CRUD + status transitions + board summary | db, eventBus, depResolver, agentRegistry |
-| LockEngine | Exclusive task locking + TTL expiry checker | db, eventBus, depResolver |
-| ProjectService | Project CRUD + default project | db |
-| OpenCodeBridge | Session management, health checks, task dispatch | db, eventBus, taskService |
-| WorkspaceService | Git worktree create/archive/delete | db, eventBus |
+## Server Dual-Mode Architecture
 
-**Circular dep**: `lockEngine.setWorkspaceService(workspaceService)` called post-construction.
-
-## Server-Side Services (not in core)
-
-| Service | Location | Responsibility |
-|---------|----------|----------------|
-| OpenCodeDiscovery | `server/src/services/` | Port scan (4096 + 14000-14100) + OS process detection (wmic/ps) |
-| OpenCodeSpawner | `server/src/services/` | Spawn `opencode serve --port N`, track PID, kill on shutdown |
-
-## Discovery System
-
-Two detection vectors running in parallel:
-
-| Vector | Method | Finds |
-|--------|--------|-------|
-| Port probe | `GET /global/health` with 500ms timeout | `opencode serve` / `--port N` instances |
-| Process detection | `wmic` (Win) / `ps` (Unix) | ALL opencode processes incl. TUI-only |
-
-**Critical limitation**: Plain `opencode` (TUI mode) has NO HTTP server — uses in-process Bun Worker RPC. Only `opencode serve` or `opencode --port N` are discoverable via port scan.
-
-Priority ports: `[4096]` (OpenCode default serve port), then range `14000-14100` (spawner range).
+```
+Default mode (HTTP+WS):        MCP mode (--mcp flag):
+┌─────────────┐                ┌─────────────┐
+│ Hono REST   │ :4000/api      │ MCP stdio   │ stdin/stdout
+│ WebSocket   │ :4000/ws       │ (no HTTP)   │
+│ Static SPA  │ :4000/         └─────────────┘
+└─────────────┘
+```
 
 ## Data Flow
 
-```
-┌─────────────┐    WebSocket     ┌──────────┐
-│  Dashboard   │ ←─── events ──── │ EventBus │
-│  (React 19)  │                  └────┬─────┘
-└──────┬───────┘                       ↑ publish
-       │ HTTP /api/*              ┌────┴─────┐
-       ▼                          │ Services │ ← shared container
-┌──────────────┐                  └────┬─────┘
-│ Hono Routes  │ ──→ Services ──→ Drizzle ──→ SQLite
-└──────────────┘                       ↑
-┌──────────────┐                       │
-│  MCP Tools   │ ──→ Services ─────────┘
-│  (stdio)     │
-└──────────────┘
-```
+1. **Dashboard → Server**: HTTP fetch via `api/client.ts`, WS for real-time events
+2. **AI Agents → Server**: MCP tools (stdio) or OpenCode HTTP bridge
+3. **Server → Core**: `createServices()` container, all DB access through service layer
+4. **Core → DB**: Drizzle ORM queries, raw SQL for migrations via `initializeDatabase()`
 
-## Server Modes
+## Key Architectural Decisions
 
-| Mode | Trigger | Transport | Use Case |
-|------|---------|-----------|----------|
-| HTTP+WS | Default | Port 4000 | Dashboard + REST API + WebSocket |
-| MCP stdio | `--mcp` flag | stdin/stdout | AI agent consumption (no HTTP) |
+| Decision | Rationale |
+|----------|-----------|
+| SQLite (not Postgres) | Single-file, zero-config, embedded — fits local dev tool |
+| MCP stdio (not HTTP) | AI agents consume tools via Model Context Protocol standard |
+| No DI framework | Manual constructor injection in `createServices()` — simple, explicit |
+| Drizzle + raw SQL | Drizzle for queries, raw `CREATE TABLE IF NOT EXISTS` for migrations |
+| Zustand (not Redux) | Lightweight, one store per domain, no boilerplate |
+| Tailwind v4 | Utility-first, `@tailwindcss/vite` plugin — no config file needed |
 
 ## Background Processes
 
 | Process | Interval | Purpose |
 |---------|----------|---------|
-| Lock expiry checker | 30s | Reverts expired locks → task back to `todo` |
-| PID health checker | 10s | Detects dead agents → auto-disconnect + release locks |
+| PID health checker | 10s | Polls OS for agent PIDs, auto-disconnects dead agents |
+| Lock expiry checker | 30s | Reverts expired task locks to `todo` status, archives orphaned workspaces |
+| OpenCode discovery | On-demand | Port scan (4096 + 14000-14100) + process detection |
 
-## Module Boundaries
+## Workspace Lifecycle
 
-- **core** → exports everything from `src/index.ts`. Never imports upstream.
-- **server** → imports `@atc/core`. Serves dashboard as static files in production.
-- **dashboard** → standalone SPA. Communicates only via HTTP + WebSocket at runtime.
+```
+claim_task → worktree created (branch: task/<id>)
+  → worker edits in isolated worktree
+  → sync_with_base (optional rebase onto latest main)
+  → review_task approve → squash merge → archive worktree
+  → review_task reject → worker fixes → re-submit
+  → task failed → remove worktree (fallback: archive)
+  → lock expired → archive worktree
+```
+## File Conventions
+
+- ESM-only, `.js` extensions in core/server imports
+- Biome for lint+format (not ESLint/Prettier)
+- UUIDs as text IDs, ISO 8601 text dates
+- No path aliases — standard relative imports

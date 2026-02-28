@@ -123,4 +123,37 @@ export function registerWorkerTools(server: McpServer, services: ATCServices) {
       };
     },
   );
+  // ── sync_with_base ──────────────────────────────────────────────────────
+  server.tool(
+    'sync_with_base',
+    'Sync your task worktree with the latest base branch changes (rebase). Use when the base branch has moved ahead.',
+    {
+      agent_token: z.string().describe('Your agent token'),
+      task_id: z.string().describe('Task ID of the workspace to sync'),
+    },
+    async ({ agent_token, task_id }) => {
+      validateAgentToken(services, agent_token);
+
+      const workspace = services.workspaceService.findByTaskId(task_id);
+      if (!workspace) {
+        return {
+          content: [
+            { type: 'text' as const, text: JSON.stringify({ error: 'No active workspace found for this task' }) },
+          ],
+          isError: true,
+        };
+      }
+
+      const result = await services.workspaceService.syncWithBase(workspace.id);
+
+      return {
+        content: [
+          {
+            type: 'text' as const,
+            text: JSON.stringify(result, null, 2),
+          },
+        ],
+      };
+    },
+  );
 }

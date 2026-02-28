@@ -5,7 +5,7 @@ import { getRawDb, type getConnection } from '../db/connection.js';
 import type { EventBus } from './event-bus.js';
 import type { DependencyResolver } from './dependency-resolver.js';
 import type { WorkspaceService } from './workspace-service.js';
-import type { ClaimResult, TaskDetail, TaskStatus } from '../types.js';
+import type { ClaimResult, MergeResult, TaskDetail, TaskStatus } from '../types.js';
 import { ATCError } from '../types.js';
 
 type DbType = ReturnType<typeof getConnection>;
@@ -193,9 +193,35 @@ export class LockEngine {
 
     this.db.update(tasks).set({ status, updatedAt: now }).where(eq(tasks.id, taskId)).run();
 
-    // If done or failed, release the lock
+    // If done or failed, release the lock and handle workspace
     if (status === 'done' || status === 'failed') {
       this.db.delete(taskLocks).where(eq(taskLocks.taskId, taskId)).run();
+
+      // Handle workspace cleanup for this task
+      if (this.workspaceService) {
+        const workspace = this.workspaceService.findByTaskId(taskId);
+        if (workspace) {
+          if (status === 'failed') {
+            // On failure: try to remove worktree entirely, fallback to archive
+            try {
+              await this.workspaceService.removeWorktree(workspace.id);
+            } catch {
+              try {
+                await this.workspaceService.archiveWorktree(workspace.id);
+              } catch {
+                // Non-fatal: workspace may already be archived/deleted
+              }
+            }
+          } else {
+            // On done: archive (preserve for inspection)
+            try {
+              await this.workspaceService.archiveWorktree(workspace.id);
+            } catch {
+              // Non-fatal: workspace may already be archived
+            }
+          }
+        }
+      }
     }
 
     await this.eventBus.publish('STATUS_CHANGED', {
@@ -302,7 +328,7 @@ export class LockEngine {
     verdict: 'approve' | 'reject',
     comment?: string,
     reviewerAgentId?: string,
-  ): Promise<void> {
+  ): Promise<{ mergeResult?: MergeResult }> {
     const task = this.db.select().from(tasks).where(eq(tasks.id, taskId)).get();
 
     if (!task) {
@@ -350,8 +376,23 @@ export class LockEngine {
       agentId: reviewerAgentId,
       payload: { verdict, comment, oldStatus: 'review', newStatus },
     });
-  }
 
+    // On approve, attempt to merge the workspace worktree
+    let mergeResult: MergeResult | undefined;
+    if (verdict === 'approve' && this.workspaceService) {
+      const workspace = this.workspaceService.findByTaskId(taskId);
+      if (workspace) {
+        try {
+          mergeResult = await this.workspaceService.mergeWorktree(workspace.id);
+        } catch {
+          // Non-fatal: merge failure doesn't block task approval
+          mergeResult = { merged: false, conflictDetails: 'Merge failed — manual merge required' };
+        }
+      }
+    }
+
+    return { mergeResult };
+  }
   /**
    * Check and expire stale locks. Run periodically.
    */
@@ -374,6 +415,18 @@ export class LockEngine {
         agentId: lock.agentId,
         payload: { expiredAt: lock.expiresAt },
       });
+
+      // Archive any active workspace for this task (don't delete — human may want to inspect)
+      if (this.workspaceService) {
+        const workspace = this.workspaceService.findByTaskId(lock.taskId);
+        if (workspace) {
+          try {
+            await this.workspaceService.archiveWorktree(workspace.id);
+          } catch {
+            // Non-fatal: workspace may already be archived
+          }
+        }
+      }
     }
   }
 

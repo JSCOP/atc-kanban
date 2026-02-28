@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react';
 import { api } from '../../api/client';
 import type { Agent, OpenCodeMessage, TaskDetail } from '../../types';
+import { WorkspaceInfo } from './WorkspaceInfo';
+import { api } from '../../api/client';
+import type { Agent, OpenCodeMessage, TaskDetail } from '../../types';
 
 interface TaskDetailPanelProps {
   taskId: string;
@@ -483,6 +486,11 @@ export function TaskDetailPanel({ taskId, onClose, onTaskUpdated }: TaskDetailPa
                   </div>
                 )}
               </div>
+
+              {/* Workspace Info */}
+              <WorkspaceInfo taskId={task.id} />
+
+              {/* Session Messages */}
 
               {/* Session Messages */}
               {assignedAgent?.connectionType === 'opencode' && assignedAgent.sessionId && (

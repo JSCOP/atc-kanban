@@ -36,6 +36,28 @@ Save the returned `agent_token` — you need it for all operations.
    - The main orchestrator will review your work
 9. Go to step 2 for the next task
 
+## Workspace & Git Worktree
+
+When you claim a task, ATC automatically creates an isolated git worktree for you:
+
+- **Worktree path**: Returned in `claim_task` response as `workspace.worktreePath`
+- **Branch**: Each task gets its own branch (`task/<shortId>`) based on the project's base branch
+- **Isolation**: Your changes are fully isolated — you won't conflict with other agents working on other tasks
+
+### What to Do After Claiming a Task
+
+1. **Navigate to the worktree**: `cd <workspace.worktreePath>` — all your work MUST happen here
+2. **Commit your changes**: Make regular commits to the task branch as you work
+3. **Stay in sync**: If the base branch has moved ahead, use the `sync_with_base` tool to rebase your branch
+   - If sync reports conflicts, resolve them manually and report via `report_progress`
+
+### Important Rules
+
+- **NEVER** work in the main repository root — always use the worktree path
+- **NEVER** checkout or modify the base branch directly
+- When you `update_status` to "review", stop working — the main agent will review and merge your branch
+- If your task is rejected after review, the worktree is still available — claim the task again and continue working
+
 ## Rules
 
 - If `claim_task` fails with `ALREADY_LOCKED`, pick another task
