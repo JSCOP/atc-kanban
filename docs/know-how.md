@@ -83,9 +83,19 @@ ANY → ANY (admin-move, bypasses rules, emits ADMIN_OVERRIDE event)
 - `createWorktreeForTask` is idempotent — returns existing workspace if one already exists for taskId
 - `ensureActiveBaseWorkspace` tries active → archived (reactivates) → null (caller must create)
 
+## Playwright Testing Convention
+
+**"Playwright 테스트" = Playwright MCP 브라우저 도구로 직접 조작. `.spec.ts` 파일 작성 금지.**
+
+- Use `playwright_browser_navigate`, `_click`, `_type`, `_snapshot` etc.
+- Set up test data via bash (direct `better-sqlite3` DB manipulation)
+- Verify via `playwright_browser_snapshot` (accessibility tree)
+- Do NOT create `tests/e2e/*.spec.ts` files for new tests
+
 ## Common Mistakes to Avoid
 
 - Don't suppress types: no `as any`, `@ts-ignore`, `@ts-expect-error`
 - Don't use static `.default(new Date().toISOString())` — use `.$defaultFn()`
 - Don't bypass service layer for DB writes
 - Don't generate DB migrations — use pragmatic ALTER TABLE approach
+- Don't write Playwright `.spec.ts` files — use MCP browser tools interactively

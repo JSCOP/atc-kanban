@@ -117,7 +117,7 @@ pnpm db:migrate       # Drizzle: apply pending migrations
 - **PID health check**: Server polls agent PIDs every 10s; dead agents auto-disconnect, locks released
 - **Lock expiry**: Separate 30s interval checks lock TTL; expired locks revert task to `todo`
 - **No CI/CD**: No GitHub Actions, Docker, or deployment configs yet
-- **E2E tests**: Require built server running on :4000. Uses Playwright with Chromium.
+- **E2E tests**: Use Playwright MCP browser tools interactively (NOT `.spec.ts` files). Legacy specs in `tests/e2e/` run via `pnpm test:e2e`.
 - **Static serving**: Production mode serves `packages/dashboard/dist/` from the server
 - **OpenCode TUI limitation**: Plain `opencode` (TUI mode) has NO HTTP server — only `opencode serve` or `opencode --port N` are discoverable
 
@@ -135,7 +135,7 @@ pnpm db:migrate       # Drizzle: apply pending migrations
 | config.md | Environment variables, Biome, TypeScript, Vite, SQLite pragmas | yes |
 | commands.md | pnpm scripts, dev/build/test commands, server modes | yes |
 | know-how.md | Gotchas, workarounds, ESM quirks, MCP restrictions, patterns | yes |
-| testing.md | Playwright E2E, Vitest, test patterns, test gaps | no |
+| testing.md | Vitest unit tests, Playwright MCP testing convention, test gaps | no |
 
 (`always: yes` = read every session start. `always: no` = read when agent judges relevant or user requests.)
 
