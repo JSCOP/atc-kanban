@@ -65,6 +65,7 @@ export interface Agent {
   sessionId: string | null;
   spawnedPid: number | null;
   workspaceMode: WorkspaceMode;
+  projectId: string | null;
 }
 
 export interface AgentInfo extends Agent {
@@ -82,6 +83,7 @@ export interface RegisterAgentInput {
   cwd?: string;
   sessionId?: string;
   workspaceMode?: WorkspaceMode;
+  projectId?: string;
 }
 
 export interface RegisterOpenCodeAgentInput {

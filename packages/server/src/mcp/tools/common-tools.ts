@@ -39,7 +39,7 @@ export function registerCommonTools(
   // ── register_agent ──────────────────────────────────────────────────────
   server.tool(
     'register_agent',
-    'Register a new agent. role=main enforces uniqueness (only one active main allowed).',
+    'Register a new agent. role=main enforces uniqueness per project (only one active main per project allowed).',
     {
       name: z.string().describe('Agent display name'),
       role: z
@@ -59,8 +59,12 @@ export function registerCommonTools(
         .describe(
           'Workspace mode: "required" (task-based agents) or "disabled" (TUI agents). Defaults to "disabled".',
         ),
+      project_id: z
+        .string()
+        .optional()
+        .describe('Project ID to scope this agent to. Main uniqueness is enforced per project.'),
     },
-    async ({ name, role, agent_type, session_id, workspace_mode }) => {
+    async ({ name, role, agent_type, session_id, workspace_mode, project_id }) => {
       const result = await services.agentRegistry.register({
         name,
         role,
@@ -69,6 +73,7 @@ export function registerCommonTools(
         cwd: process.cwd(),
         sessionId: session_id,
         workspaceMode: workspace_mode,
+        projectId: project_id,
       });
 
       // Track this agent in the session for cleanup on process exit

@@ -104,6 +104,7 @@ export const agents = sqliteTable(
     workspaceMode: text('workspace_mode', { enum: ['required', 'disabled'] })
       .notNull()
       .default('disabled'),
+    projectId: text('project_id').references(() => projects.id),
   },
   (table) => [
     uniqueIndex('idx_unique_active_main')

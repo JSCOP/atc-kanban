@@ -257,35 +257,43 @@ export class LockEngine {
 
     // If done or failed, release the lock and handle workspace
     if (effectiveStatus === 'done' || effectiveStatus === 'failed') {
-      this.db.delete(taskLocks).where(eq(taskLocks.taskId, taskId)).run();
-
-      // Handle workspace cleanup for this task
-      if (this.workspaceService) {
+      // On done: merge worktree first — if conflict, revert status and throw
+      if (effectiveStatus === 'done' && this.workspaceService) {
         const workspace = this.workspaceService.findByTaskId(taskId);
         if (workspace) {
-          if (status === 'failed') {
-            // On failure: try to remove worktree entirely, fallback to archive
-            try {
-              await this.workspaceService.removeWorktree(workspace.id);
-            } catch {
-              try {
-                await this.workspaceService.archiveWorktree(workspace.id);
-              } catch {
-                // Non-fatal: workspace may already be archived/deleted
-              }
-            }
-          } else {
-            // On done: archive (preserve for inspection)
+          const mergeResult = await this.workspaceService.mergeWorktree(workspace.id).catch((err) => {
+            return { merged: false, conflictDetails: err instanceof Error ? err.message : String(err) };
+          });
+          if (!mergeResult.merged) {
+            // Revert status back to in_progress — merge conflict blocks completion
+            this.db.update(tasks).set({ status: 'in_progress', updatedAt: now }).where(eq(tasks.id, taskId)).run();
+            throw new ATCError(
+              'MERGE_CONFLICT',
+              `Cannot complete task: merge conflict detected. ${mergeResult.conflictDetails ?? 'Resolve conflicts and retry.'}`,
+              409,
+            );
+          }
+        }
+      }
+
+      this.db.delete(taskLocks).where(eq(taskLocks.taskId, taskId)).run();
+
+      // Handle workspace cleanup for failed tasks
+      if (effectiveStatus === 'failed' && this.workspaceService) {
+        const workspace = this.workspaceService.findByTaskId(taskId);
+        if (workspace) {
+          try {
+            await this.workspaceService.removeWorktree(workspace.id);
+          } catch {
             try {
               await this.workspaceService.archiveWorktree(workspace.id);
             } catch {
-              // Non-fatal: workspace may already be archived
+              // Non-fatal: workspace may already be archived/deleted
             }
           }
         }
       }
     }
-
     await this.eventBus.publish('STATUS_CHANGED', {
       taskId,
       agentId: task.assignedAgentId ?? undefined,
@@ -439,16 +447,30 @@ export class LockEngine {
       payload: { verdict, comment, oldStatus: 'review', newStatus },
     });
 
-    // On approve, attempt to merge the workspace worktree
+    // On approve, attempt to merge the workspace worktree — conflict blocks approval
     let mergeResult: MergeResult | undefined;
     if (verdict === 'approve' && this.workspaceService) {
       const workspace = this.workspaceService.findByTaskId(taskId);
       if (workspace) {
-        try {
-          mergeResult = await this.workspaceService.mergeWorktree(workspace.id);
-        } catch {
-          // Non-fatal: merge failure doesn't block task approval
-          mergeResult = { merged: false, conflictDetails: 'Merge failed — manual merge required' };
+        mergeResult = await this.workspaceService.mergeWorktree(workspace.id).catch((err) => {
+          return { merged: false, conflictDetails: err instanceof Error ? err.message : String(err) };
+        });
+        if (!mergeResult.merged) {
+          // Revert status back to review — merge conflict blocks approval
+          this.db
+            .update(tasks)
+            .set({
+              status: 'review',
+              assignedAgentId: task.assignedAgentId,
+              updatedAt: now,
+            })
+            .where(eq(tasks.id, taskId))
+            .run();
+          throw new ATCError(
+            'MERGE_CONFLICT',
+            `Cannot approve task: merge conflict detected. ${mergeResult.conflictDetails ?? 'Resolve conflicts and retry.'}`,
+            409,
+          );
         }
       }
     }

@@ -54,7 +54,7 @@ export class AgentRegistry {
    * - Otherwise → create a new agent.
    */
   async register(input: RegisterAgentInput): Promise<RegisterAgentResult> {
-    const { name, role, agentType, processId, cwd, sessionId, workspaceMode } = input;
+    const { name, role, agentType, processId, cwd, sessionId, workspaceMode, projectId } = input;
     const now = new Date().toISOString();
 
     // 1a. If sessionId provided, try exact session match first (most precise)
@@ -111,18 +111,24 @@ export class AgentRegistry {
       }
     }
 
-    // 2. No reconnectable agent found — enforce main uniqueness
+    // 2. No reconnectable agent found — enforce main uniqueness (per-project scope)
     if (role === 'main') {
+      // Build query conditions: role=main, status=active, scoped by projectId
+      const mainConditions = projectId
+        ? and(eq(agents.role, 'main'), eq(agents.status, 'active'), eq(agents.projectId, projectId))
+        : and(eq(agents.role, 'main'), eq(agents.status, 'active'));
+
       const existingMain = this.db
         .select()
         .from(agents)
-        .where(and(eq(agents.role, 'main'), eq(agents.status, 'active')))
+        .where(mainConditions)
         .get();
 
       if (existingMain) {
         const mainAlive = existingMain.processId ? isProcessAlive(existingMain.processId) : false;
         if (mainAlive) {
-          throw new ATCError('MAIN_ALREADY_ACTIVE', 'Main agent already active', 409);
+          const scopeMsg = projectId ? ` for project ${projectId}` : '';
+          throw new ATCError('MAIN_ALREADY_ACTIVE', `Main agent already active${scopeMsg}`, 409);
         }
         // Dead main → disconnect it
         await this.disconnectById(existingMain.id, 'process_dead');
@@ -149,6 +155,7 @@ export class AgentRegistry {
         cwd: cwd ?? null,
         sessionId: sessionId ?? null,
         workspaceMode: workspaceMode ?? 'disabled',
+        projectId: projectId ?? null,
       })
       .run();
 
@@ -542,10 +549,15 @@ export class AgentRegistry {
     }
 
     if (role === 'main') {
+      // Scope main uniqueness by projectId (same as register)
+      const mainConditions = agent.projectId
+        ? and(eq(agents.role, 'main'), eq(agents.status, 'active'), eq(agents.projectId, agent.projectId))
+        : and(eq(agents.role, 'main'), eq(agents.status, 'active'));
+
       const existingMain = this.db
         .select()
         .from(agents)
-        .where(and(eq(agents.role, 'main'), eq(agents.status, 'active')))
+        .where(mainConditions)
         .get();
 
       if (existingMain && existingMain.id !== agentId) {
@@ -599,6 +611,7 @@ export class AgentRegistry {
       sessionId: row.sessionId ?? null,
       spawnedPid: row.spawnedPid ?? null,
       workspaceMode: (row.workspaceMode ?? 'disabled') as WorkspaceMode,
+      projectId: row.projectId ?? null,
     };
   }
 }
