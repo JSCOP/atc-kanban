@@ -16,7 +16,19 @@
 | `pnpm build:publish` | Build for npm publish | Order: core → dashboard → server → copy dashboard into dist/public |
 | `pnpm start` | Production server | `node packages/server/dist/index.js` — serves dashboard static |
 
-## npm Publishing
+## npm Publishing (MANDATORY after every commit)
+
+Every commit MUST be followed by npm publish to keep `npx atc-kanban` up to date.
+
+```bash
+# 1. Bump version in packages/server/package.json (patch for fixes, minor for features)
+# 2. Build for publish
+pnpm build:publish
+# 3. Publish from server package
+cd packages/server && npm publish
+# 4. Commit version bump + push
+git add -A && git commit -m "chore: bump vX.Y.Z" && git push
+```
 
 | Command | Description | Notes |
 |---------|-------------|-------|
