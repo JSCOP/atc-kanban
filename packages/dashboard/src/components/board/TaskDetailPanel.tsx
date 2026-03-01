@@ -56,6 +56,9 @@ export function TaskDetailPanel({ taskId, onClose, onTaskUpdated }: TaskDetailPa
   const [dispatching, setDispatching] = useState(false);
   const [dispatchError, setDispatchError] = useState<string | null>(null);
   const [dispatchSuccess, setDispatchSuccess] = useState<string | null>(null);
+  const [sessions, setSessions] = useState<{ id: string; title?: string; createdAt?: string }[]>([]);
+  const [selectedSessionId, setSelectedSessionId] = useState('');
+  const [sessionsLoading, setSessionsLoading] = useState(false);
 
   const [sessionMessages, setSessionMessages] = useState<OpenCodeMessage[]>([]);
   const [messagesLoading, setMessagesLoading] = useState(false);
@@ -142,6 +145,33 @@ export function TaskDetailPanel({ taskId, onClose, onTaskUpdated }: TaskDetailPa
     }
   }, [selectedAgentId, agents]);
 
+  useEffect(() => {
+    if (selectedAgentId && isSelectedOpenCode) {
+      setSessionsLoading(true);
+      const agent = agents.find((a) => a.id === selectedAgentId);
+      api.listSessions(selectedAgentId)
+        .then((sess) => {
+          setSessions(sess);
+          const activeSessionId = agent?.sessionId;
+          if (activeSessionId && sess.some((s) => s.id === activeSessionId)) {
+            setSelectedSessionId(activeSessionId);
+          } else if (sess.length > 0) {
+            setSelectedSessionId(sess[0].id);
+          } else {
+            setSelectedSessionId('');
+          }
+        })
+        .catch(() => {
+          setSessions([]);
+          setSelectedSessionId('');
+        })
+        .finally(() => setSessionsLoading(false));
+    } else {
+      setSessions([]);
+      setSelectedSessionId('');
+    }
+  }, [selectedAgentId, agents]);
+
   const handleAssign = async () => {
     setAssigning(true);
     setError(null);
@@ -185,12 +215,14 @@ export function TaskDetailPanel({ taskId, onClose, onTaskUpdated }: TaskDetailPa
         agentId: selectedAgentId,
         prompt: customPrompt.trim() || undefined,
         opencodeAgent: selectedOpencodeAgent || undefined,
+        sessionId: selectedSessionId || undefined,
       });
 
       if (result.success) {
         setDispatchSuccess(result.message);
         setCustomPrompt('');
         setSelectedOpencodeAgent('');
+        setSelectedSessionId('');
         await fetchTask();
         onTaskUpdated();
       } else {
@@ -327,7 +359,7 @@ export function TaskDetailPanel({ taskId, onClose, onTaskUpdated }: TaskDetailPa
         </div>
 
         {/* Scrollable Content */}
-        <div className="h-[calc(100%-65px)] overflow-y-auto p-6 space-y-6">
+        <div className="h-[calc(100%-65px)] overflow-y-auto p-6 pb-24 space-y-6">
           {loading && (
             <div className="flex items-center justify-center h-64">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500" />
@@ -428,6 +460,23 @@ export function TaskDetailPanel({ taskId, onClose, onTaskUpdated }: TaskDetailPa
                           ))}
                         </select>
                       )}
+                      {/* Session Selector */}
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-1">Session</label>
+                        <select
+                          value={selectedSessionId}
+                          onChange={(e) => setSelectedSessionId(e.target.value)}
+                          disabled={dispatching || sessionsLoading}
+                          className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-gray-200 focus:outline-none focus:border-blue-500 disabled:opacity-50"
+                        >
+                          <option value="">Create new session</option>
+                          {sessions.map((s) => (
+                            <option key={s.id} value={s.id}>
+                              {s.title || s.id.slice(0, 8)} {s.id === selectedAgent?.sessionId ? '(active)' : ''}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
                       <textarea
                         value={customPrompt}
                         onChange={(e) => setCustomPrompt(e.target.value)}

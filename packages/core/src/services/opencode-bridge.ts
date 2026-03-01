@@ -418,6 +418,7 @@ export class OpenCodeBridge {
 
     try {
       let sessionIdToUse: string;
+      let sessionTitleToUse: string | null = null;
 
       if (input.sessionId) {
         // Validate the existing session is reachable
@@ -431,14 +432,18 @@ export class OpenCodeBridge {
             400,
           );
         }
+        const sessionData = (await validateRes.json()) as { id: string; title?: string };
         sessionIdToUse = input.sessionId;
+        sessionTitleToUse = sessionData.title ?? null;
       } else if (agent.sessionId) {
         // Agent has an active session — try to reuse it before creating a new one
         const validateRes = await fetch(`${agent.serverUrl}/session/${agent.sessionId}`, {
           signal: AbortSignal.timeout(5000),
         });
         if (validateRes.ok) {
+          const sessionData = (await validateRes.json()) as { id: string; title?: string };
           sessionIdToUse = agent.sessionId;
+          sessionTitleToUse = sessionData.title ?? null;
         } else {
           // Active session is stale/gone — create a new one
           const sessionRes = await fetch(`${agent.serverUrl}/session`, {
@@ -456,8 +461,9 @@ export class OpenCodeBridge {
             );
           }
 
-          const session = (await sessionRes.json()) as { id: string };
+          const session = (await sessionRes.json()) as { id: string; title?: string };
           sessionIdToUse = session.id;
+          sessionTitleToUse = session.title ?? null;
         }
       } else {
         // No session provided, no active session on agent — create a new one
@@ -476,8 +482,9 @@ export class OpenCodeBridge {
           );
         }
 
-        const session = (await sessionRes.json()) as { id: string };
+        const session = (await sessionRes.json()) as { id: string; title?: string };
         sessionIdToUse = session.id;
+        sessionTitleToUse = session.title ?? null;
       }
 
       if (!this.lockEngine) {
@@ -543,10 +550,17 @@ export class OpenCodeBridge {
         .update(agents)
         .set({
           sessionId: sessionIdToUse,
+          sessionTitle: sessionTitleToUse,
           lastHeartbeat: now,
         })
         .where(eq(agents.id, input.agentId))
         .run();
+
+      // Broadcast agent update so dashboard reflects new session immediately
+      await this.eventBus.publish('AGENT_CONNECTED', {
+        agentId: input.agentId,
+        payload: { reason: 'session_changed', sessionId: sessionIdToUse },
+      });
 
       // Assign task to agent
       this.db
