@@ -293,10 +293,12 @@ export class OpenCodeBridge {
     sessionId: string,
     message: string,
     opencodeAgent?: string,
+    serverUrlOverride?: string,
   ): Promise<void> {
     const agent = this.agentRegistry.getById(agentId);
-    if (agent.connectionType !== 'opencode' || !agent.serverUrl) {
-      throw new ATCError('NOT_OPENCODE', 'Agent is not an OpenCode agent', 400);
+    const serverUrl = serverUrlOverride || agent.serverUrl;
+    if (!serverUrl) {
+      throw new ATCError('NOT_OPENCODE', 'Agent has no serverUrl and no override provided', 400);
     }
 
     const body: Record<string, unknown> = {
@@ -307,7 +309,7 @@ export class OpenCodeBridge {
     }
 
     try {
-      const res = await fetch(`${agent.serverUrl}/session/${sessionId}/prompt_async`, {
+      const res = await fetch(`${serverUrl}/session/${sessionId}/prompt_async`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -330,7 +332,7 @@ export class OpenCodeBridge {
       if (error instanceof ATCError) throw error;
       throw new ATCError(
         'OPENCODE_API_ERROR',
-        `Failed to send message to ${agent.serverUrl}: ${(error as Error).message}`,
+        `Failed to send message to ${serverUrl}: ${(error as Error).message}`,
         502,
       );
     }

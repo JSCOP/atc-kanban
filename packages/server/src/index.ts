@@ -61,22 +61,40 @@ if (!isMcpMode) {
       const payload = event.payload as { oldStatus: string; newStatus: string };
       if (payload.newStatus !== 'review') return;
 
-      // Find active main agent with OpenCode connection
-      const agents = services.agentRegistry.listAgents();
-      const mainAgent = agents.find(
-        (a) =>
-          a.role === 'main' &&
-          a.status === 'active' &&
-          a.connectionType === 'opencode' &&
-          a.serverUrl,
-      );
-      if (!mainAgent || !mainAgent.sessionId) return;
+      // Find active main agent — cross-reference MCP and OpenCode agents
+      const allAgents = services.agentRegistry.listAgents();
+      const mainAgent = allAgents.find((a) => a.role === 'main' && a.status === 'active');
+      if (!mainAgent) return;
+
+      // Resolve serverUrl: prefer agent's own, fallback to OpenCode agent with same CWD
+      let serverUrl = mainAgent.serverUrl;
+      let sessionId = mainAgent.sessionId;
+      if (!serverUrl && mainAgent.cwd) {
+        const opencodeProxy = allAgents.find(
+          (a) =>
+            a.connectionType === 'opencode' &&
+            a.status === 'active' &&
+            a.serverUrl &&
+            a.cwd === mainAgent.cwd,
+        );
+        if (opencodeProxy) {
+          serverUrl = opencodeProxy.serverUrl;
+          sessionId = sessionId || opencodeProxy.sessionId;
+        }
+      }
+      if (!serverUrl || !sessionId) return;
 
       // Get task details for the review message
       const task = services.taskService.getTask(event.taskId!);
       const reviewMessage = `[ATC Auto-Review] Task "${task.title}" (${task.id}) has been marked for review. Please review and approve/reject using review_task tool.`;
 
-      await services.opencodeBridge.sendMessage(mainAgent.id, mainAgent.sessionId, reviewMessage);
+      await services.opencodeBridge.sendMessage(
+        mainAgent.id,
+        sessionId,
+        reviewMessage,
+        undefined,
+        serverUrl,
+      );
       console.log(
         `[ATC] Auto-dispatched review notification for task ${event.taskId} to main agent ${mainAgent.name}`,
       );
@@ -94,24 +112,35 @@ services.eventBus.on('TASK_CREATED', async (event) => {
     const project = services.projectService.getProject(task.projectId);
     if (!project.autoDispatch) return;
 
-    // Find active main agent with OpenCode connection
-    const agents = services.agentRegistry.listAgents();
-    const mainAgent = agents.find(
-      (a) =>
-        a.role === 'main' &&
-        a.status === 'active' &&
-        a.connectionType === 'opencode' &&
-        a.serverUrl,
-    );
-    if (!mainAgent || !mainAgent.sessionId) return;
+    // Find active main agent — cross-reference MCP and OpenCode agents
+    const allAgents = services.agentRegistry.listAgents();
+    const mainAgent = allAgents.find((a) => a.role === 'main' && a.status === 'active');
+    if (!mainAgent) return;
 
-    // Build list of available workers
-    const workers = agents.filter(
+    // Resolve serverUrl: prefer agent's own, fallback to OpenCode agent with same CWD
+    let serverUrl = mainAgent.serverUrl;
+    let sessionId = mainAgent.sessionId;
+    if (!serverUrl && mainAgent.cwd) {
+      const opencodeProxy = allAgents.find(
+        (a) =>
+          a.connectionType === 'opencode' &&
+          a.status === 'active' &&
+          a.serverUrl &&
+          a.cwd === mainAgent.cwd,
+      );
+      if (opencodeProxy) {
+        serverUrl = opencodeProxy.serverUrl;
+        sessionId = sessionId || opencodeProxy.sessionId;
+      }
+    }
+    if (!serverUrl || !sessionId) return;
+
+    // Build list of available workers (any active worker with a resolvable serverUrl)
+    const workers = allAgents.filter(
       (a) =>
         a.role === 'worker' &&
         a.status === 'active' &&
-        a.connectionType === 'opencode' &&
-        a.serverUrl,
+        (a.connectionType === 'opencode' || a.serverUrl),
     );
     if (workers.length === 0) return;
 
@@ -129,7 +158,7 @@ services.eventBus.on('TASK_CREATED', async (event) => {
       `Choose based on the worker's name/specialization. Use the worker's existing session (session_id from their agent data) if available.\n` +
       `To dispatch, call: dispatch_task(main_token, task_id="${task.id}", agent_id="<chosen_worker_id>")`;
 
-    await services.opencodeBridge.sendMessage(mainAgent.id, mainAgent.sessionId, message);
+    await services.opencodeBridge.sendMessage(mainAgent.id, sessionId, message, undefined, serverUrl);
     if (isMcpMode) {
       console.error(
         `[ATC] Auto-dispatch: notified main agent ${mainAgent.name} about new task "${task.title}"`,
