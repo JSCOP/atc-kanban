@@ -47,6 +47,58 @@ const services = createServices({
 // server should manage lock expiry and agent health checks.
 
 let healthChecker: ReturnType<typeof setInterval> | undefined;
+let reviewPoller: ReturnType<typeof setInterval> | undefined;
+
+// Track notified review tasks (dedup across listener + poller)
+const reviewNotified = new Set<string>();
+let lastReviewPollTime = new Date().toISOString();
+
+// Shared helper: send review notification to main agent
+async function sendReviewNotification(taskId: string): Promise<void> {
+  if (reviewNotified.has(taskId)) return;
+  reviewNotified.add(taskId);
+
+  const allAgents = services.agentRegistry.listAgents();
+  const mainAgent = allAgents.find((a) => a.role === 'main' && a.status === 'active');
+  if (!mainAgent) {
+    reviewNotified.delete(taskId);
+    return;
+  }
+
+  let serverUrl = mainAgent.serverUrl;
+  let sessionId = mainAgent.sessionId;
+  if (!serverUrl && mainAgent.cwd) {
+    const opencodeProxy = allAgents.find(
+      (a) =>
+        a.connectionType === 'opencode' &&
+        a.status === 'active' &&
+        a.serverUrl &&
+        a.cwd === mainAgent.cwd,
+    );
+    if (opencodeProxy) {
+      serverUrl = opencodeProxy.serverUrl;
+      sessionId = sessionId || opencodeProxy.sessionId;
+    }
+  }
+  if (!serverUrl || !sessionId) {
+    reviewNotified.delete(taskId);
+    return;
+  }
+
+  const task = services.taskService.getTask(taskId);
+  const reviewMessage = `[ATC Auto-Review] Task "${task.title}" (${task.id}) has been marked for review. Please review and approve/reject using review_task tool.`;
+
+  await services.opencodeBridge.sendMessage(
+    mainAgent.id,
+    sessionId,
+    reviewMessage,
+    undefined,
+    serverUrl,
+  );
+  console.log(
+    `[ATC] Auto-dispatched review notification for task ${taskId} to main agent ${mainAgent.name}`,
+  );
+}
 
 if (!isMcpMode) {
   services.lockEngine.startExpiryChecker(30000);
@@ -55,53 +107,45 @@ if (!isMcpMode) {
     services.agentRegistry.checkHealth().catch(console.error);
   }, 10000);
 
-  // Auto-dispatch review notifications to main agent
+  // In-memory listener: handles HTTP-originated STATUS_CHANGED events
   services.eventBus.on('STATUS_CHANGED', async (event) => {
     try {
       const payload = event.payload as { oldStatus: string; newStatus: string };
       if (payload.newStatus !== 'review') return;
-
-      // Find active main agent — cross-reference MCP and OpenCode agents
-      const allAgents = services.agentRegistry.listAgents();
-      const mainAgent = allAgents.find((a) => a.role === 'main' && a.status === 'active');
-      if (!mainAgent) return;
-
-      // Resolve serverUrl: prefer agent's own, fallback to OpenCode agent with same CWD
-      let serverUrl = mainAgent.serverUrl;
-      let sessionId = mainAgent.sessionId;
-      if (!serverUrl && mainAgent.cwd) {
-        const opencodeProxy = allAgents.find(
-          (a) =>
-            a.connectionType === 'opencode' &&
-            a.status === 'active' &&
-            a.serverUrl &&
-            a.cwd === mainAgent.cwd,
-        );
-        if (opencodeProxy) {
-          serverUrl = opencodeProxy.serverUrl;
-          sessionId = sessionId || opencodeProxy.sessionId;
-        }
-      }
-      if (!serverUrl || !sessionId) return;
-
-      // Get task details for the review message
-      const task = services.taskService.getTask(event.taskId!);
-      const reviewMessage = `[ATC Auto-Review] Task "${task.title}" (${task.id}) has been marked for review. Please review and approve/reject using review_task tool.`;
-
-      await services.opencodeBridge.sendMessage(
-        mainAgent.id,
-        sessionId,
-        reviewMessage,
-        undefined,
-        serverUrl,
-      );
-      console.log(
-        `[ATC] Auto-dispatched review notification for task ${event.taskId} to main agent ${mainAgent.name}`,
-      );
+      if (!event.taskId) return;
+      await sendReviewNotification(event.taskId);
     } catch (err) {
       console.error('[ATC] Failed to auto-dispatch review notification:', err);
     }
   });
+
+  // DB poller: catches STATUS_CHANGED events from MCP processes (cross-process)
+  reviewPoller = setInterval(async () => {
+    try {
+      const newEvents = services.eventBus.pollEvents({
+        since: lastReviewPollTime,
+        types: ['STATUS_CHANGED'],
+        limit: 50,
+      });
+      lastReviewPollTime = new Date().toISOString();
+      for (const event of newEvents) {
+        const payload = event.payload as { newStatus?: string };
+        if (payload.newStatus === 'review' && event.taskId) {
+          await sendReviewNotification(event.taskId);
+        }
+      }
+    } catch (err) {
+      console.error('[ATC] Review poller error:', err);
+    }
+  }, 5000);
+
+  // Startup: notify for any tasks currently in review status
+  const reviewTasks = services.taskService.listTasks({ status: ['review'] });
+  for (const t of reviewTasks) {
+    sendReviewNotification(t.id).catch((err) => {
+      console.error(`[ATC] Startup review notification failed for task ${t.id}:`, err);
+    });
+  }
 }
 
 // Auto-dispatch: notify main agent when a new task is created
@@ -235,6 +279,7 @@ if (isMcpMode) {
     spawner.killAll();
     services.lockEngine.stopExpiryChecker();
     if (healthChecker) clearInterval(healthChecker);
+    if (reviewPoller) clearInterval(reviewPoller);
 
     // Force-close all WebSocket connections so server.close() can finish
     for (const client of wss.clients) {

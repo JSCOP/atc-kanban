@@ -37,7 +37,7 @@ export function BoardPage() {
   const [activeTask, setActiveTask] = useState<Task | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
-  const [dateFrom, setDateFrom] = useState<string>('');
+  const [dateFrom, setDateFrom] = useState<string>(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]);
   const [dateTo, setDateTo] = useState<string>('');
 
   const handleRefresh = useCallback(() => {
