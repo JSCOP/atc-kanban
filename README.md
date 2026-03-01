@@ -4,6 +4,7 @@
 [![license](https://img.shields.io/github/license/JSCOP/atc-kanban)](LICENSE)
 [![node](https://img.shields.io/node/v/atc-kanban)](https://nodejs.org)
 [![GitHub stars](https://img.shields.io/github/stars/JSCOP/atc-kanban)](https://github.com/JSCOP/atc-kanban)
+[![GitHub Sponsors](https://img.shields.io/github/sponsors/JSCOP)](https://github.com/sponsors/JSCOP)
 
 Multi-agent task orchestration with kanban board for AI coding agents.
 
@@ -133,7 +134,9 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for conventions and guidelines.
 
 ## Support
 
-If ATC is useful to you, consider [sponsoring the project](https://github.com/sponsors/JSCOP) to support ongoing development.
+If ATC is useful to you, consider sponsoring the project to support ongoing development.
+
+[![Sponsor](https://img.shields.io/badge/Sponsor-%E2%9D%A4-pink?logo=github)](https://github.com/sponsors/JSCOP)
 
 ## License
 
