@@ -54,6 +54,46 @@ export function registerWorkerTools(server: McpServer, services: ATCServices) {
     async ({ lock_token, task_id, status }) => {
       const task = await services.lockEngine.updateStatus(lock_token, task_id, status);
 
+      // Notify main agent if task effectively becomes 'review'
+      if (task.status === 'review') {
+        try {
+          const allAgents = services.agentRegistry.listAgents();
+          const mainAgent = allAgents.find((a) => a.role === 'main' && a.status === 'active');
+          if (mainAgent) {
+            let serverUrl = mainAgent.serverUrl;
+            let sessionId = mainAgent.sessionId;
+            if (!serverUrl && mainAgent.cwd) {
+              const opencodeProxy = allAgents.find(
+                (a) =>
+                  a.connectionType === 'opencode' &&
+                  a.status === 'active' &&
+                  a.serverUrl &&
+                  a.cwd === mainAgent.cwd,
+              );
+              if (opencodeProxy) {
+                serverUrl = opencodeProxy.serverUrl;
+                sessionId = sessionId || opencodeProxy.sessionId;
+              }
+            }
+            if (serverUrl && sessionId) {
+              const reviewMessage = `[ATC Auto-Review] Task "${task.title}" (${task.id}) has been marked for review. Please review and approve/reject using review_task tool.`;
+              await services.opencodeBridge.sendMessage(
+                mainAgent.id,
+                sessionId,
+                reviewMessage,
+                undefined,
+                serverUrl,
+              );
+              console.error(
+                `[ATC-MCP] Sent review notification for task ${task.id} to main agent ${mainAgent.name}`,
+              );
+            }
+          }
+        } catch (notifyErr) {
+          console.error('[ATC-MCP] Failed to send review notification:', notifyErr);
+        }
+      }
+
       return {
         content: [
           {

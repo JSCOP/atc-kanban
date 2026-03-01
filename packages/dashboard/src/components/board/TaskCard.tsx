@@ -59,6 +59,15 @@ const statusIcons = {
   ),
 };
 
+function formatAbsoluteTime(iso: string): string {
+  const d = new Date(iso);
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  const hours = String(d.getHours()).padStart(2, '0');
+  const mins = String(d.getMinutes()).padStart(2, '0');
+  return `${month}/${day} ${hours}:${mins}`;
+}
+
 function formatRelativeTime(dateString: string): string {
   const date = new Date(dateString);
   const now = new Date();
@@ -156,7 +165,12 @@ export function TaskCard({ task, onClick, onDispatch, draggable = false }: TaskC
               </svg>
             </button>
           )}
-          <span className="font-mono">{formatRelativeTime(task.createdAt)}</span>
+          <span
+            className="font-mono text-xs text-gray-400"
+            title={formatRelativeTime(task.createdAt)}
+          >
+            {formatAbsoluteTime(task.createdAt)}
+          </span>
         </div>
       </div>
     </div>

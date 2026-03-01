@@ -525,14 +525,16 @@ export function TaskDetailPanel({ taskId, onClose, onTaskUpdated }: TaskDetailPa
                   <div>
                     <p className="text-xs text-gray-500 uppercase tracking-wide">Created</p>
                     <p className="mt-1 text-gray-300 font-mono text-sm">
-                      {timeAgo(task.createdAt)}
+                      {new Date(task.createdAt).toLocaleString()}
                     </p>
+                    <p className="mt-0.5 text-gray-500 text-xs">{timeAgo(task.createdAt)}</p>
                   </div>
                   <div>
                     <p className="text-xs text-gray-500 uppercase tracking-wide">Updated</p>
                     <p className="mt-1 text-gray-300 font-mono text-sm">
-                      {timeAgo(task.updatedAt)}
+                      {new Date(task.updatedAt).toLocaleString()}
                     </p>
+                    <p className="mt-0.5 text-gray-500 text-xs">{timeAgo(task.updatedAt)}</p>
                   </div>
                 </div>
 

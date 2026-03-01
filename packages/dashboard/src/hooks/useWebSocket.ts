@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { wsClient } from '../api/ws';
-import { useBoardStore } from '../stores/board-store';
 import { useAgentStore } from '../stores/agent-store';
+import { useBoardStore } from '../stores/board-store';
 import { useEventStore } from '../stores/event-store';
 import { useProjectStore } from '../stores/project-store';
 import { useWorkspaceStore } from '../stores/workspace-store';
@@ -33,12 +33,22 @@ export function useWebSocket() {
             boardStore.updateTask(message.task);
           }
           break;
-        case 'task:deleted':
-          boardStore.removeTask(message.taskId);
+        case 'task:deleted': {
+          // Only remove if task exists in current store
+          const exists = useBoardStore.getState().tasks.some((t) => t.id === message.taskId);
+          if (exists) {
+            boardStore.removeTask(message.taskId);
+          }
           break;
-        case 'task:moved':
-          boardStore.moveTask(message.taskId, message.status);
+        }
+        case 'task:moved': {
+          // Only move if task exists in current store
+          const exists = useBoardStore.getState().tasks.some((t) => t.id === message.taskId);
+          if (exists) {
+            boardStore.moveTask(message.taskId, message.status);
+          }
           break;
+        }
         case 'agent:connected':
           agentStore.updateAgent(message.agent);
           break;

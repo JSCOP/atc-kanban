@@ -7,7 +7,7 @@ import {
   useSensor,
   useSensors,
 } from '@dnd-kit/core';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { apiClient } from '../api/client';
 import { CreateTaskModal } from '../components/board/CreateTaskModal';
 import { DispatchDialog } from '../components/board/DispatchDialog';
@@ -15,6 +15,7 @@ import { KanbanColumn } from '../components/board/KanbanColumn';
 import { TaskCard } from '../components/board/TaskCard';
 import { TaskDetailPanel } from '../components/board/TaskDetailPanel';
 import { useRealtimeBoard } from '../hooks/useRealtimeBoard';
+import { useProjectStore } from '../stores/project-store';
 import type { Task, TaskStatus } from '../types';
 
 const columns: TaskStatus[] = ['todo', 'locked', 'in_progress', 'review', 'done', 'failed'];
@@ -29,12 +30,20 @@ const columnTitles: Record<TaskStatus, string> = {
 };
 
 export function BoardPage() {
-  const { tasks, summary, loading, fetchTasks } = useRealtimeBoard();
+  const { tasks, summary, loading, fetchTasks, fetchSummary } = useRealtimeBoard();
+  const selectedProjectId = useProjectStore((s) => s.selectedProjectId);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [dispatchTask, setDispatchTask] = useState<Task | null>(null);
   const [activeTask, setActiveTask] = useState<Task | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [dateFrom, setDateFrom] = useState<string>('');
+  const [dateTo, setDateTo] = useState<string>('');
+
+  const handleRefresh = useCallback(() => {
+    fetchTasks(selectedProjectId);
+    fetchSummary(selectedProjectId);
+  }, [fetchTasks, fetchSummary, selectedProjectId]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -55,15 +64,31 @@ export function BoardPage() {
     };
   }, []);
 
+  const filteredTasks = useMemo(() => {
+    if (!dateFrom && !dateTo) return tasks;
+    return tasks.filter((t) => {
+      const created = new Date(t.createdAt).getTime();
+      if (dateFrom) {
+        const from = new Date(dateFrom + 'T00:00:00').getTime();
+        if (created < from) return false;
+      }
+      if (dateTo) {
+        const to = new Date(dateTo + 'T23:59:59.999').getTime();
+        if (created > to) return false;
+      }
+      return true;
+    });
+  }, [tasks, dateFrom, dateTo]);
+
   const tasksByStatus = useMemo(() => {
     return columns.reduce(
       (acc, status) => {
-        acc[status] = tasks.filter((t) => t.status === status);
+        acc[status] = filteredTasks.filter((t) => t.status === status);
         return acc;
       },
       {} as Record<TaskStatus, Task[]>,
     );
-  }, [tasks]);
+  }, [filteredTasks]);
 
   const handleDragStart = (event: DragStartEvent) => {
     const task = event.active.data.current?.task as Task;
@@ -118,6 +143,54 @@ export function BoardPage() {
         </button>
       </div>
 
+      <div className="flex items-center gap-3 mb-4">
+        <div className="flex items-center gap-2 text-sm text-gray-400">
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"
+            />
+          </svg>
+          <span>Filter</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <label className="text-xs text-gray-500">From</label>
+          <input
+            type="date"
+            value={dateFrom}
+            onChange={(e) => setDateFrom(e.target.value)}
+            className="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-sm text-gray-300 focus:border-blue-500 focus:outline-none"
+          />
+        </div>
+        <div className="flex items-center gap-2">
+          <label className="text-xs text-gray-500">To</label>
+          <input
+            type="date"
+            value={dateTo}
+            onChange={(e) => setDateTo(e.target.value)}
+            className="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-sm text-gray-300 focus:border-blue-500 focus:outline-none"
+          />
+        </div>
+        {(dateFrom || dateTo) && (
+          <button
+            onClick={() => {
+              setDateFrom('');
+              setDateTo('');
+            }}
+            className="text-xs text-gray-500 hover:text-gray-300 px-2 py-1"
+          >
+            Clear
+          </button>
+        )}
+        {(dateFrom || dateTo) && (
+          <span className="text-xs text-gray-500">
+            ({filteredTasks.length} of {tasks.length} tasks)
+          </span>
+        )}
+      </div>
+
       {loading && tasks.length === 0 ? (
         <div className="flex-1 flex items-center justify-center">
           <div className="flex items-center gap-3 text-gray-400">
@@ -150,7 +223,7 @@ export function BoardPage() {
                   status={status}
                   title={columnTitles[status]}
                   tasks={tasksByStatus[status] || []}
-                  count={summary?.[status === 'in_progress' ? 'inProgress' : status] || 0}
+                  count={tasksByStatus[status]?.length || 0}
                   onTaskClick={handleTaskClick}
                   onDispatch={setDispatchTask}
                 />
@@ -171,21 +244,21 @@ export function BoardPage() {
       <CreateTaskModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
-        onSuccess={fetchTasks}
+        onSuccess={handleRefresh}
       />
 
       <DispatchDialog
         isOpen={dispatchTask !== null}
         onClose={() => setDispatchTask(null)}
         task={dispatchTask}
-        onSuccess={fetchTasks}
+        onSuccess={handleRefresh}
       />
 
       {selectedTaskId && (
         <TaskDetailPanel
           taskId={selectedTaskId}
           onClose={() => setSelectedTaskId(null)}
-          onTaskUpdated={fetchTasks}
+          onTaskUpdated={handleRefresh}
         />
       )}
     </div>
