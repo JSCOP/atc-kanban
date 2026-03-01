@@ -20,7 +20,7 @@ src/
     ├── lock-engine.ts         # Exclusive task locking with TTL + expiry checker
     ├── role-manager.ts        # Main/worker role enforcement (max 1 main)
     ├── dependency-resolver.ts # Task DAG validation + dependency checks
-    ├── project-service.ts     # Project CRUD + default project creation
+    ├── project-service.ts     # Project CRUD
     └── workspace-service.ts   # Git worktree lifecycle (create/archive/delete)
 ```
 

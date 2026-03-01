@@ -67,7 +67,7 @@ status: 'active' | 'archived' | 'deleted'
 No migration files. `initializeDatabase()` in `connection.ts` uses:
 1. `CREATE TABLE IF NOT EXISTS` for initial schema
 2. `PRAGMA table_info()` + `ALTER TABLE ADD COLUMN` for incremental changes
-3. Default project (`id='default'`) auto-created via `INSERT OR IGNORE`
+3. No default project auto-created — users create projects manually
 
 ## Relationships
 

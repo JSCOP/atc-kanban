@@ -142,10 +142,24 @@ if (isMcpMode) {
     spawner.killAll();
     services.lockEngine.stopExpiryChecker();
     if (healthChecker) clearInterval(healthChecker);
+
+    // Force-close all WebSocket connections so server.close() can finish
+    for (const client of wss.clients) {
+      client.terminate();
+    }
     wss.close();
-    server.close();
-    closeConnection();
-    process.exit(0);
+
+    // Wait for HTTP server to release the port, then exit
+    server.close(() => {
+      closeConnection();
+      process.exit(0);
+    });
+
+    // Fallback: force exit after 3s if server.close() hangs
+    setTimeout(() => {
+      closeConnection();
+      process.exit(1);
+    }, 3000).unref();
   };
 
   process.on('SIGINT', shutdown);

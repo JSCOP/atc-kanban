@@ -1,12 +1,12 @@
 {
   "name": "atc-kanban",
-  "version": "0.3.4",
+  "version": "0.4.0",
   "description": "Multi-agent task orchestration system with kanban board — MCP server + HTTP dashboard",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
-    "atc-kanban": "./dist/index.js",
-    "atc": "./dist/index.js"
+    "atc-kanban": "./dist/cli.js",
+    "atc": "./dist/cli.js"
   },
   "files": [
     "dist"
@@ -15,7 +15,7 @@
     "build": "tsup",
     "copy:dashboard": "node scripts/copy-dashboard.mjs",
     "dev": "tsx watch src/index.ts",
-    "start": "node dist/index.js"
+    "start": "node dist/cli.js"
   },
   "keywords": [
     "mcp",

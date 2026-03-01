@@ -1,4 +1,10 @@
 ## Current
+- [x] Remove Default Project auto-creation + add project delete to sidebar (v0.3.4)
+  - Done: Removed `INSERT OR IGNORE` for default project from `connection.ts`, removed `if (id === 'default')` deletion guard from `project-service.ts`, replaced all `'default'` fallbacks with dynamic first-project lookup in `task-service.ts`/`board.ts`/`project-store.ts`, added project delete button (red × on hover) to `ProjectRail.tsx`, reverted AgentsPage workspace delete button.
+  - Verification: `pnpm build` passed, LSP diagnostics clean on all 7 files, browser verification confirmed delete works and default project no longer auto-creates.
+- [x] Add workspace management UI to SettingsPage (v0.3.3)
+  - Done: Removed auto-workspace creation from `project-service.ts`, added workspace delete/archive buttons to SettingsPage with filter tabs.
+- [ ] Investigate git worktree Windows failures (worker agent `export` command issue)
 - [x] Fix OpenCode dispatch -> claim -> review pipeline
   - Done: `OpenCodeBridge.dispatchTask()` now auto-claims via `LockEngine.claimTask()` before prompt send, injects `lock_token`/`task_id` into dispatch prompts (appended for custom prompts), releases claim on prompt send failure, and returns `lockToken` in `DispatchResult`. Wired `opencodeBridge.setLockEngine(lockEngine)` in service container and hardened server default `DB_PATH` to `resolve('./data/atc.sqlite')`.
   - Verification: `pnpm build` passed; LSP diagnostics clean for `packages/core/src/types.ts`, `packages/core/src/services/opencode-bridge.ts`, `packages/core/src/index.ts`, `packages/server/src/index.ts`.
@@ -10,7 +16,6 @@
   - Files created: `server/services/filesystem-browser-service.ts`, `server/http/routes/fs.ts`, `dashboard/components/DirectoryPickerPanel.tsx`
   - Files modified: `server/http/app.ts`, `dashboard/types.ts`, `dashboard/api/client.ts`, `dashboard/components/projects/CreateProjectModal.tsx`
   - Verification: `pnpm build` passes, Playwright browser test confirmed drives listing, directory navigation, breadcrumbs, git repo detection, path selection flow
-- [ ] Investigate git worktree Windows failures (worker agent `export` command issue)
 
 ## Completed
 - [x] Add Playwright E2E coverage for admin features
