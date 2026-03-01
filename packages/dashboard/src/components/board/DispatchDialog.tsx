@@ -74,10 +74,20 @@ export function DispatchDialog({ isOpen, onClose, task, onSuccess }: DispatchDia
   useEffect(() => {
     if (selectedAgentId) {
       setSessionsLoading(true);
+      const agent = agents.find((a) => a.id === selectedAgentId);
       apiClient.listSessions(selectedAgentId)
         .then((sess) => {
           setSessions(sess);
-          setSelectedSessionId('');
+          // Default to agent's active session if available
+          const activeSessionId = agent?.sessionId;
+          if (activeSessionId && sess.some((s) => s.id === activeSessionId)) {
+            setSelectedSessionId(activeSessionId);
+          } else if (sess.length > 0) {
+            // Fall back to most recent session
+            setSelectedSessionId(sess[0].id);
+          } else {
+            setSelectedSessionId('');
+          }
         })
         .catch(() => {
           setSessions([]);
@@ -88,7 +98,7 @@ export function DispatchDialog({ isOpen, onClose, task, onSuccess }: DispatchDia
       setSessions([]);
       setSelectedSessionId('');
     }
-  }, [selectedAgentId]);
+  }, [selectedAgentId, agents]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -258,17 +268,17 @@ export function DispatchDialog({ isOpen, onClose, task, onSuccess }: DispatchDia
                 disabled={loading || sessionsLoading}
                 className="w-full px-4 py-2.5 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-blue-500 disabled:opacity-50"
               >
-                <option value="">New session (recommended)</option>
+                <option value="">New session</option>
                 {sessions.map((sess) => (
                   <option key={sess.id} value={sess.id}>
                     {sess.title || 'Untitled'} ({sess.createdAt ? timeAgo(sess.createdAt) : 'unknown'})
-                    {sess.id === selectedAgent?.sessionId ? ' (active)' : ''}
+                    {sess.id === selectedAgent?.sessionId ? ' ★ active' : ''}
                   </option>
                 ))}
               </select>
-              {selectedSessionId && (
+              {!selectedSessionId && (
                 <p className="text-xs text-amber-400 mt-1">
-                  ⚠ Reusing a session will mix context from previous conversations.
+                  ⚠ New session will create a separate conversation context.
                 </p>
               )}
             </div>
