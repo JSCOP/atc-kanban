@@ -26,6 +26,10 @@ export function SettingsPage() {
   const [showAddWorkspace, setShowAddWorkspace] = useState(false);
   const [newWorkspacePath, setNewWorkspacePath] = useState('');
   const [addingWorkspace, setAddingWorkspace] = useState(false);
+  const [autoDispatch, setAutoDispatch] = useState(false);
+  const [autoDispatchLoading, setAutoDispatchLoading] = useState(false);
+  const [autoDispatchError, setAutoDispatchError] = useState<string | null>(null);
+
 
   const loadData = useCallback(() => {
     Promise.all([
@@ -47,6 +51,13 @@ export function SettingsPage() {
     loadData();
   }, [loadData]);
 
+  useEffect(() => {
+    if (currentProject) {
+      setAutoDispatch(currentProject.autoDispatch ?? false);
+    }
+  }, [currentProject]);
+
+
   const formatUptime = (seconds: number) => {
     const d = Math.floor(seconds / 86400);
     const h = Math.floor((seconds % 86400) / 3600);
@@ -63,6 +74,22 @@ export function SettingsPage() {
   const formatBytes = (bytes: number) => {
     const mb = bytes / 1024 / 1024;
     return `${mb.toFixed(1)} MB`;
+  };
+
+  const handleAutoDispatchToggle = async () => {
+    if (!currentProject || autoDispatchLoading) return;
+    const newValue = !autoDispatch;
+    setAutoDispatch(newValue);
+    setAutoDispatchLoading(true);
+    setAutoDispatchError(null);
+    try {
+      await api.updateProject(currentProject.id, { autoDispatch: newValue });
+    } catch (err) {
+      setAutoDispatch(!newValue);
+      setAutoDispatchError(err instanceof Error ? err.message : 'Failed to update setting');
+    } finally {
+      setAutoDispatchLoading(false);
+    }
   };
 
   const handleShutdown = async () => {
@@ -261,6 +288,45 @@ export function SettingsPage() {
           <div>
             <p className="text-xs text-gray-500">Base Branch</p>
             <p className="mt-1 text-gray-300 font-mono text-sm">{currentProject?.baseBranch ?? '—'}</p>
+          </div>
+        </div>
+      </div>
+      {/* Automation */}
+      <div className="bg-gray-800/50 border border-gray-700/50 rounded-xl p-6 space-y-4">
+        <div className="flex items-center gap-2">
+          <svg className="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+          </svg>
+          <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide">Automation</h2>
+        </div>
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-gray-300">Auto-dispatch tasks</p>
+              <p className="text-xs text-gray-500">
+                When enabled, new tasks created on the board will be automatically sent to the main agent for analysis and assignment to the most appropriate worker.
+              </p>
+              {autoDispatchError && (
+                <p className="text-xs text-red-400 mt-1">{autoDispatchError}</p>
+              )}
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={autoDispatch}
+              onClick={handleAutoDispatchToggle}
+              disabled={autoDispatchLoading || !currentProject}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                autoDispatch ? 'bg-blue-600' : 'bg-gray-600'
+              } ${autoDispatchLoading || !currentProject ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+            >
+              <span
+                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                  autoDispatch ? 'translate-x-6' : 'translate-x-1'
+                }`}
+              />
+            </button>
           </div>
         </div>
       </div>

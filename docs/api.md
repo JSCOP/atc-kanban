@@ -71,7 +71,10 @@
 
 ### Main-only (orchestrator)
 
-`create_task`, `update_task`, `delete_task`, `set_dependency`, `review_task`, `force_release`, `get_board_summary`, `create_workspace`, `list_workspaces`, `delete_workspace`
+`create_task`, `update_task`, `delete_task`, `set_dependency`, `review_task`, `force_release`, `get_board_summary`, `dispatch_task`, `create_workspace`, `list_workspaces`, `delete_workspace`
+
+- `dispatch_task` dispatches a task to a specific worker via OpenCode bridge (supports optional `prompt` and `session_id` reuse)
+- Project create/update routes accept optional `autoDispatch` boolean (`projects.auto_dispatch` persisted as 0/1)
 
 ### Worker-only (executor)
 

@@ -169,6 +169,7 @@ export interface Project {
   description: string | null;
   repoRoot: string | null;
   baseBranch: string | null;
+  autoDispatch: boolean;
   createdAt: string;
 }
 

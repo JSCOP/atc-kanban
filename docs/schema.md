@@ -20,6 +20,11 @@ SQLite via `better-sqlite3` + Drizzle ORM. WAL mode, foreign keys ON, 5s busy ti
 
 ## Key Columns
 
+### projects
+```
+auto_dispatch: INTEGER NOT NULL DEFAULT 0  (0=false, 1=true; enables TASK_CREATED auto-notify to main)
+```
+
 ### tasks
 ```
 status:   'todo' | 'locked' | 'in_progress' | 'review' | 'done' | 'failed'

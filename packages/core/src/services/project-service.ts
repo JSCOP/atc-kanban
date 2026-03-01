@@ -45,6 +45,7 @@ export class ProjectService {
     description?: string;
     repoRoot?: string;
     baseBranch?: string;
+    autoDispatch?: boolean;
   }): Project {
     const name = input.name?.trim();
 
@@ -71,6 +72,7 @@ export class ProjectService {
         description: input.description ?? null,
         repoRoot: normalizedRepoRoot,
         baseBranch,
+        autoDispatch: input.autoDispatch ? 1 : 0,
         createdAt,
       })
       .run();
@@ -80,7 +82,13 @@ export class ProjectService {
 
   updateProject(
     id: string,
-    input: { name?: string; description?: string; repoRoot?: string; baseBranch?: string },
+    input: {
+      name?: string;
+      description?: string;
+      repoRoot?: string;
+      baseBranch?: string;
+      autoDispatch?: boolean;
+    },
   ): Project {
     this.getProject(id);
 
@@ -113,6 +121,10 @@ export class ProjectService {
       updateData.baseBranch = input.baseBranch || null;
     }
 
+    if (input.autoDispatch !== undefined) {
+      updateData.autoDispatch = input.autoDispatch ? 1 : 0;
+    }
+
     if (Object.keys(updateData).length > 0) {
       this.db.update(projects).set(updateData).where(eq(projects.id, id)).run();
     }
@@ -121,7 +133,6 @@ export class ProjectService {
   }
 
   deleteProject(id: string): void {
-
     this.getProject(id);
 
     const task = this.db.select({ id: tasks.id }).from(tasks).where(eq(tasks.projectId, id)).get();
@@ -185,6 +196,7 @@ export class ProjectService {
       description: row.description,
       repoRoot: row.repoRoot ?? null,
       baseBranch: row.baseBranch ?? null,
+      autoDispatch: !!row.autoDispatch,
       createdAt: row.createdAt,
     };
   }

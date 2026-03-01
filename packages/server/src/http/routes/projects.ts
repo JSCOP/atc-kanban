@@ -24,6 +24,7 @@ export function createProjectRoutes(services: ATCServices) {
       description: body.description,
       repoRoot: body.repoRoot,
       baseBranch: body.baseBranch,
+      autoDispatch: body.autoDispatch,
     });
     return c.json({ project }, 201);
   });
@@ -36,6 +37,7 @@ export function createProjectRoutes(services: ATCServices) {
       description: body.description,
       repoRoot: body.repoRoot,
       baseBranch: body.baseBranch,
+      autoDispatch: body.autoDispatch,
     });
     return c.json({ project });
   });

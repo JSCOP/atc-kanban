@@ -15,6 +15,7 @@ export const projects = sqliteTable('projects', {
   description: text('description'),
   repoRoot: text('repo_root'),
   baseBranch: text('base_branch').default('main'),
+  autoDispatch: integer('auto_dispatch').notNull().default(0),
   createdAt: text('created_at')
     .notNull()
     .default(new Date().toISOString())

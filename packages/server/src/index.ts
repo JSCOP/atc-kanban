@@ -1,9 +1,9 @@
 import { existsSync, mkdirSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { dirname, resolve } from 'node:path';
-import envPaths from 'env-paths';
 import { closeConnection, createServices } from '@atc/core';
 import { serve } from '@hono/node-server';
+import envPaths from 'env-paths';
 import { createApp } from './http/app.js';
 import { startMcpStdioServer } from './mcp/server.js';
 import { OpenCodeDiscovery } from './services/opencode-discovery.js';
@@ -64,7 +64,11 @@ if (!isMcpMode) {
       // Find active main agent with OpenCode connection
       const agents = services.agentRegistry.listAgents();
       const mainAgent = agents.find(
-        (a) => a.role === 'main' && a.status === 'active' && a.connectionType === 'opencode' && a.serverUrl,
+        (a) =>
+          a.role === 'main' &&
+          a.status === 'active' &&
+          a.connectionType === 'opencode' &&
+          a.serverUrl,
       );
       if (!mainAgent || !mainAgent.sessionId) return;
 
@@ -73,12 +77,72 @@ if (!isMcpMode) {
       const reviewMessage = `[ATC Auto-Review] Task "${task.title}" (${task.id}) has been marked for review. Please review and approve/reject using review_task tool.`;
 
       await services.opencodeBridge.sendMessage(mainAgent.id, mainAgent.sessionId, reviewMessage);
-      console.log(`[ATC] Auto-dispatched review notification for task ${event.taskId} to main agent ${mainAgent.name}`);
+      console.log(
+        `[ATC] Auto-dispatched review notification for task ${event.taskId} to main agent ${mainAgent.name}`,
+      );
     } catch (err) {
       console.error('[ATC] Failed to auto-dispatch review notification:', err);
     }
   });
 }
+
+// Auto-dispatch: notify main agent when a new task is created
+services.eventBus.on('TASK_CREATED', async (event) => {
+  try {
+    // Get project to check auto_dispatch setting
+    const task = services.taskService.getTask(event.taskId!);
+    const project = services.projectService.getProject(task.projectId);
+    if (!project.autoDispatch) return;
+
+    // Find active main agent with OpenCode connection
+    const agents = services.agentRegistry.listAgents();
+    const mainAgent = agents.find(
+      (a) =>
+        a.role === 'main' &&
+        a.status === 'active' &&
+        a.connectionType === 'opencode' &&
+        a.serverUrl,
+    );
+    if (!mainAgent || !mainAgent.sessionId) return;
+
+    // Build list of available workers
+    const workers = agents.filter(
+      (a) =>
+        a.role === 'worker' &&
+        a.status === 'active' &&
+        a.connectionType === 'opencode' &&
+        a.serverUrl,
+    );
+    if (workers.length === 0) return;
+
+    const workerList = workers
+      .map((w) => `- ${w.name} (ID: ${w.id})${w.sessionId ? ' [has active session]' : ''}`)
+      .join('\n');
+
+    const message =
+      `[ATC Auto-Dispatch] A new task has been created and needs assignment.\n\n` +
+      `Task: "${task.title}" (ID: ${task.id})\n` +
+      `Priority: ${task.priority}\n` +
+      `Description: ${task.description || 'No description'}\n\n` +
+      `Available workers:\n${workerList}\n\n` +
+      `Please analyze the task and dispatch it to the most appropriate worker using the dispatch_task tool. ` +
+      `Choose based on the worker's name/specialization. Use the worker's existing session (session_id from their agent data) if available.\n` +
+      `To dispatch, call: dispatch_task(main_token, task_id="${task.id}", agent_id="<chosen_worker_id>")`;
+
+    await services.opencodeBridge.sendMessage(mainAgent.id, mainAgent.sessionId, message);
+    if (isMcpMode) {
+      console.error(
+        `[ATC] Auto-dispatch: notified main agent ${mainAgent.name} about new task "${task.title}"`,
+      );
+    } else {
+      console.log(
+        `[ATC] Auto-dispatch: notified main agent ${mainAgent.name} about new task "${task.title}"`,
+      );
+    }
+  } catch (err) {
+    console.error('[ATC] Failed to auto-dispatch task notification:', err);
+  }
+});
 
 // ── MCP Mode ────────────────────────────────────────────────────────────────
 

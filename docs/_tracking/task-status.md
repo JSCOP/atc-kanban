@@ -1,4 +1,7 @@
 ## Current
+- [x] Add backend auto-dispatch plumbing for new tasks (core + server)
+  - Done: Added `projects.auto_dispatch` schema + pragmatic migration, extended `Project`/`ProjectService` create-update-read mapping (`autoDispatch` boolean), added main MCP `dispatch_task` tool, added `TASK_CREATED` listener in server bootstrap to notify active main with available workers, and wired `autoDispatch` through project POST/PUT routes.
+  - Verification: LSP diagnostics clean for 7 changed source files; `pnpm -F @atc/core build && pnpm -F atc-kanban build` passed.
 - [x] Remove Default Project auto-creation + add project delete to sidebar (v0.3.4)
   - Done: Removed `INSERT OR IGNORE` for default project from `connection.ts`, removed `if (id === 'default')` deletion guard from `project-service.ts`, replaced all `'default'` fallbacks with dynamic first-project lookup in `task-service.ts`/`board.ts`/`project-store.ts`, added project delete button (red × on hover) to `ProjectRail.tsx`, reverted AgentsPage workspace delete button.
   - Verification: `pnpm build` passed, LSP diagnostics clean on all 7 files, browser verification confirmed delete works and default project no longer auto-creates.

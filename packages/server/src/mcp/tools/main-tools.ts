@@ -1,6 +1,6 @@
-import { z } from 'zod';
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { ATCServices } from '@atc/core';
+import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { z } from 'zod';
 import { validateMainToken } from '../middleware/role-guard.js';
 
 /**
@@ -18,7 +18,10 @@ export function registerMainTools(server: McpServer, services: ATCServices) {
       priority: z.enum(['critical', 'high', 'medium', 'low']).optional().describe('Priority level'),
       labels: z.array(z.string()).optional().describe('Task labels/tags'),
       depends_on: z.array(z.string()).optional().describe('Task IDs this task depends on'),
-      requires_review: z.boolean().optional().describe('Whether task requires review before completion (default: true)'),
+      requires_review: z
+        .boolean()
+        .optional()
+        .describe('Whether task requires review before completion (default: true)'),
     },
     async ({ main_token, title, description, priority, labels, depends_on, requires_review }) => {
       const agent = validateMainToken(services, main_token);
@@ -221,6 +224,41 @@ export function registerMainTools(server: McpServer, services: ATCServices) {
           {
             type: 'text' as const,
             text: JSON.stringify(summary, null, 2),
+          },
+        ],
+      };
+    },
+  );
+
+  // ── dispatch_task ───────────────────────────────────────────────────────────
+  server.tool(
+    'dispatch_task',
+    'Dispatch a task to a specific worker agent. Claims the task and sends it to the worker. Main agent only.',
+    {
+      main_token: z.string().describe('Main agent token'),
+      task_id: z.string().describe('Task ID to dispatch'),
+      agent_id: z.string().describe('Worker agent ID to dispatch to'),
+      prompt: z.string().optional().describe('Custom prompt for the worker'),
+      session_id: z
+        .string()
+        .optional()
+        .describe('Reuse existing session ID instead of creating new'),
+    },
+    async ({ main_token, task_id, agent_id, prompt, session_id }) => {
+      validateMainToken(services, main_token);
+
+      const result = await services.opencodeBridge.dispatchTask({
+        taskId: task_id,
+        agentId: agent_id,
+        prompt,
+        sessionId: session_id,
+      });
+
+      return {
+        content: [
+          {
+            type: 'text' as const,
+            text: JSON.stringify(result, null, 2),
           },
         ],
       };

@@ -204,6 +204,9 @@ export function initializeDatabase(dbPath?: string): ReturnType<typeof drizzle> 
   if (!projectColNames.has('base_branch')) {
     raw.exec("ALTER TABLE projects ADD COLUMN base_branch TEXT DEFAULT 'main'");
   }
+  if (!projectColNames.has('auto_dispatch')) {
+    raw.exec('ALTER TABLE projects ADD COLUMN auto_dispatch INTEGER NOT NULL DEFAULT 0');
+  }
 
   // ── Task migrations ─────────────────────────────────────────────────────────
   const taskColumns = raw.prepare("PRAGMA table_info('tasks')").all() as { name: string }[];

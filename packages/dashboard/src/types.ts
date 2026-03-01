@@ -93,6 +93,7 @@ export interface Project {
   description: string | null;
   repoRoot: string | null;
   baseBranch: string | null;
+  autoDispatch: boolean;
   createdAt: string;
 }
 
@@ -108,6 +109,7 @@ export interface UpdateProjectInput {
   description?: string;
   repoRoot?: string;
   baseBranch?: string;
+  autoDispatch?: boolean;
 }
 
 export interface Workspace {
