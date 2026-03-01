@@ -172,7 +172,7 @@ function AgentCard({
               </h3>
             </div>
           )}
-          {agent.sessionTitle && (
+          {agent.sessionTitle && agent.sessionTitle !== agent.name && (
             <p className="text-xs text-purple-400 truncate mt-0.5" title={agent.sessionTitle}>
               {agent.sessionTitle}
             </p>
@@ -186,6 +186,15 @@ function AgentCard({
               className={`text-[10px] px-1.5 py-0.5 rounded ${connectionTypeColors[agent.connectionType]}`}
             >
               {agent.connectionType.toUpperCase()}
+            </span>
+            <span
+              className={`text-[10px] px-1.5 py-0.5 rounded font-semibold uppercase ${
+                isMain
+                  ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                  : 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
+              }`}
+            >
+              {isMain ? 'MAIN' : 'WORKER'}
             </span>
           </div>
         </div>
@@ -432,24 +441,27 @@ function SpawnOpenCodeForm({
   onSpawn,
   loading,
 }: {
-  onSpawn: (input: { name: string; cwd: string }) => Promise<void>;
+  onSpawn: (input: { name?: string; cwd?: string }) => Promise<void>;
   loading: boolean;
 }) {
   const [name, setName] = useState('');
-  const [cwd, setCwd] = useState('');
+  const [selectedWorkspace, setSelectedWorkspace] = useState('');
   const [result, setResult] = useState<string | null>(null);
+  const { workspaces } = useWorkspaceStore();
+  const activeWorkspaces = workspaces.filter((w) => w.status === 'active');
+
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setResult(null);
     try {
       await onSpawn({
-        name: name.trim() || (undefined as unknown as string),
-        cwd: cwd.trim() || (undefined as unknown as string),
+        name: name.trim() || undefined,
+        cwd: selectedWorkspace || undefined,
       });
       setResult('Agent spawned successfully!');
       setName('');
-      setCwd('');
+      setSelectedWorkspace('');
       setTimeout(() => setResult(null), 3000);
     } catch (err) {
       setResult(err instanceof Error ? err.message : 'Failed to spawn agent');
@@ -481,16 +493,22 @@ function SpawnOpenCodeForm({
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-400 mb-1">
-            Working Directory (optional)
-          </label>
-          <input
-            type="text"
-            value={cwd}
-            onChange={(e) => setCwd(e.target.value)}
-            placeholder="Defaults to server CWD"
-            className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-gray-200 placeholder-gray-600 focus:outline-none focus:border-blue-500"
-          />
+          <label className="block text-sm font-medium text-gray-400 mb-1">Workspace</label>
+          <select
+            value={selectedWorkspace}
+            onChange={(e) => setSelectedWorkspace(e.target.value)}
+            className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-gray-200 focus:outline-none focus:border-blue-500"
+          >
+            <option value="">Server default directory</option>
+            {activeWorkspaces.map((ws) => (
+              <option key={ws.id} value={ws.repoRoot} title={ws.repoRoot}>
+                {ws.repoRoot.split(/[/\\]/).pop() || ws.repoRoot}
+              </option>
+            ))}
+          </select>
+          {activeWorkspaces.length === 0 && (
+            <p className="text-xs text-gray-600 mt-1">No active workspaces. Create one in Settings.</p>
+          )}
         </div>
       </div>
       <button
@@ -686,7 +704,7 @@ export function AgentsPage() {
     setSelectedActivityAgentId(agentId);
   };
 
-  const handleSpawn = async (input: { name: string; cwd: string }) => {
+  const handleSpawn = async (input: { name?: string; cwd?: string }) => {
     setSpawnLoading(true);
     try {
       await spawnOpenCodeAgent(input);

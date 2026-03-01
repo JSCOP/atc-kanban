@@ -36,6 +36,15 @@ export function isProcessAlive(pid: number): boolean {
   }
 }
 
+function extractPort(url: string): number | null {
+  try {
+    const parsed = new URL(url);
+    return parsed.port ? Number.parseInt(parsed.port, 10) : null;
+  } catch {
+    return null;
+  }
+}
+
 export class AgentRegistry {
   private db: DbType;
   private eventBus: EventBus;
@@ -62,6 +71,33 @@ export class AgentRegistry {
       const bySession = this.db.select().from(agents).where(eq(agents.sessionId, sessionId)).get();
 
       if (bySession) {
+        if (role === 'main' && bySession.role !== 'main') {
+          const mainConditions = projectId
+            ? and(
+                eq(agents.role, 'main'),
+                eq(agents.status, 'active'),
+                eq(agents.projectId, projectId),
+              )
+            : and(eq(agents.role, 'main'), eq(agents.status, 'active'));
+
+          const existingMain = this.db.select().from(agents).where(mainConditions).get();
+
+          if (existingMain) {
+            const mainAlive = existingMain.processId
+              ? isProcessAlive(existingMain.processId)
+              : false;
+            if (mainAlive) {
+              const scopeMsg = projectId ? ` for project ${projectId}` : '';
+              throw new ATCError(
+                'MAIN_ALREADY_ACTIVE',
+                `Main agent already active${scopeMsg}`,
+                409,
+              );
+            }
+            await this.disconnectById(existingMain.id, 'process_dead');
+          }
+        }
+
         if (bySession.status === 'active') {
           const alive = bySession.processId ? isProcessAlive(bySession.processId) : false;
           if (alive && bySession.processId !== (processId ?? null)) {
@@ -76,10 +112,22 @@ export class AgentRegistry {
               cwd,
               sessionId,
               now,
+              name,
+              role,
+              connectionType: 'mcp',
             });
           }
         } else {
-          return this.reactivateAgent(bySession.id, { agentType, processId, cwd, sessionId, now });
+          return this.reactivateAgent(bySession.id, {
+            agentType,
+            processId,
+            cwd,
+            sessionId,
+            now,
+            name,
+            role,
+            connectionType: 'mcp',
+          });
         }
       }
     }
@@ -103,11 +151,25 @@ export class AgentRegistry {
           // For workers, allow multiple — fall through to create new
         } else {
           // Same process reconnecting, or old process dead → reactivate
-          return this.reactivateAgent(existing.id, { agentType, processId, cwd, sessionId, now });
+          return this.reactivateAgent(existing.id, {
+            agentType,
+            processId,
+            cwd,
+            sessionId,
+            now,
+            connectionType: 'mcp',
+          });
         }
       } else {
         // Disconnected agent → reactivate
-        return this.reactivateAgent(existing.id, { agentType, processId, cwd, sessionId, now });
+        return this.reactivateAgent(existing.id, {
+          agentType,
+          processId,
+          cwd,
+          sessionId,
+          now,
+          connectionType: 'mcp',
+        });
       }
     }
 
@@ -118,11 +180,7 @@ export class AgentRegistry {
         ? and(eq(agents.role, 'main'), eq(agents.status, 'active'), eq(agents.projectId, projectId))
         : and(eq(agents.role, 'main'), eq(agents.status, 'active'));
 
-      const existingMain = this.db
-        .select()
-        .from(agents)
-        .where(mainConditions)
-        .get();
+      const existingMain = this.db.select().from(agents).where(mainConditions).get();
 
       if (existingMain) {
         const mainAlive = existingMain.processId ? isProcessAlive(existingMain.processId) : false;
@@ -172,23 +230,33 @@ export class AgentRegistry {
    */
   private async reactivateAgent(
     agentId: string,
-    opts: { agentType?: string; processId?: number; cwd?: string; sessionId?: string; now: string },
+    opts: {
+      agentType?: string;
+      processId?: number;
+      cwd?: string;
+      sessionId?: string;
+      name?: string;
+      role?: 'main' | 'worker';
+      connectionType?: 'mcp' | 'opencode';
+      now: string;
+    },
   ): Promise<RegisterAgentResult> {
     const newToken = uuidv4();
+    const setData: Record<string, unknown> = {
+      agentToken: newToken,
+      status: 'active',
+      lastHeartbeat: opts.now,
+    };
 
-    this.db
-      .update(agents)
-      .set({
-        agentToken: newToken,
-        status: 'active',
-        lastHeartbeat: opts.now,
-        processId: opts.processId ?? null,
-        cwd: opts.cwd ?? null,
-        agentType: opts.agentType ?? null,
-        sessionId: opts.sessionId ?? null,
-      })
-      .where(eq(agents.id, agentId))
-      .run();
+    if (opts.processId !== undefined) setData.processId = opts.processId;
+    if (opts.cwd !== undefined) setData.cwd = opts.cwd;
+    if (opts.agentType !== undefined) setData.agentType = opts.agentType;
+    if (opts.sessionId !== undefined) setData.sessionId = opts.sessionId;
+    if (opts.name !== undefined) setData.name = opts.name;
+    if (opts.role !== undefined) setData.role = opts.role;
+    if (opts.connectionType !== undefined) setData.connectionType = opts.connectionType;
+
+    this.db.update(agents).set(setData).where(eq(agents.id, agentId)).run();
 
     const agent = this.db.select().from(agents).where(eq(agents.id, agentId)).get();
 
@@ -448,6 +516,47 @@ export class AgentRegistry {
       return this.getById(existing.id);
     }
 
+    const inputPort = extractPort(input.serverUrl);
+
+    if (inputPort !== null) {
+      const agentsWithServerUrl = this.db
+        .select()
+        .from(agents)
+        .all()
+        .filter((agent) => agent.serverUrl !== null);
+
+      const byPort = agentsWithServerUrl.find((agent) => {
+        if (!agent.serverUrl) return false;
+        return extractPort(agent.serverUrl) === inputPort;
+      });
+
+      if (byPort) {
+        const newToken = uuidv4();
+        const setData: Record<string, unknown> = {
+          serverUrl: input.serverUrl,
+          agentToken: newToken,
+          status: 'active',
+          lastHeartbeat: now,
+        };
+
+        if (input.name !== undefined) setData.name = input.name;
+        if (input.cwd !== undefined) setData.cwd = input.cwd;
+
+        this.db.update(agents).set(setData).where(eq(agents.id, byPort.id)).run();
+
+        await this.eventBus.publish('AGENT_CONNECTED', {
+          agentId: byPort.id,
+          payload: {
+            name: input.name ?? byPort.name,
+            connectionType: 'opencode',
+            reconnected: true,
+          },
+        });
+
+        return this.getById(byPort.id);
+      }
+    }
+
     // Create new OpenCode agent
     const agentId = uuidv4();
     const agentToken = uuidv4();
@@ -482,26 +591,21 @@ export class AgentRegistry {
    * Update the CWD (working directory) of an agent.
    */
   updateCwd(agentId: string, cwd: string): void {
-    this.db
-      .update(agents)
-      .set({ cwd })
-      .where(eq(agents.id, agentId))
-      .run();
+    this.db.update(agents).set({ cwd }).where(eq(agents.id, agentId)).run();
   }
   /**
    * Update the session info (CWD and session title) of an agent.
    */
-  updateSessionInfo(agentId: string, info: { cwd?: string; sessionId?: string | null; sessionTitle?: string | null }): void {
+  updateSessionInfo(
+    agentId: string,
+    info: { cwd?: string; sessionId?: string | null; sessionTitle?: string | null },
+  ): void {
     const setData: Record<string, unknown> = {};
     if (info.cwd !== undefined) setData.cwd = info.cwd;
     if (info.sessionId !== undefined) setData.sessionId = info.sessionId;
     if (info.sessionTitle !== undefined) setData.sessionTitle = info.sessionTitle;
     if (Object.keys(setData).length === 0) return;
-    this.db
-      .update(agents)
-      .set(setData)
-      .where(eq(agents.id, agentId))
-      .run();
+    this.db.update(agents).set(setData).where(eq(agents.id, agentId)).run();
   }
   /**
    * Check health of a specific OpenCode agent via HTTP.
@@ -566,14 +670,14 @@ export class AgentRegistry {
     if (role === 'main') {
       // Scope main uniqueness by projectId (same as register)
       const mainConditions = agent.projectId
-        ? and(eq(agents.role, 'main'), eq(agents.status, 'active'), eq(agents.projectId, agent.projectId))
+        ? and(
+            eq(agents.role, 'main'),
+            eq(agents.status, 'active'),
+            eq(agents.projectId, agent.projectId),
+          )
         : and(eq(agents.role, 'main'), eq(agents.status, 'active'));
 
-      const existingMain = this.db
-        .select()
-        .from(agents)
-        .where(mainConditions)
-        .get();
+      const existingMain = this.db.select().from(agents).where(mainConditions).get();
 
       if (existingMain && existingMain.id !== agentId) {
         this.db.update(agents).set({ role: 'worker' }).where(eq(agents.id, existingMain.id)).run();
