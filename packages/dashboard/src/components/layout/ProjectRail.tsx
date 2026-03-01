@@ -88,7 +88,7 @@ const navItems = [
 
 export function ProjectRail() {
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const { projects, selectedProjectId, selectProject, fetchProjects } = useProjectStore();
+  const { projects, selectedProjectId, selectProject, fetchProjects, deleteProject } = useProjectStore();
 
   useEffect(() => {
     fetchProjects();
@@ -143,24 +143,37 @@ export function ProjectRail() {
           {projects.map((project: Project) => {
             const isSelected = project.id === selectedProjectId;
             return (
-              <button
-                key={project.id}
-                onClick={() => selectProject(project.id)}
-                className={`group relative w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold text-white transition-all ${
-                  isSelected ? 'ring-2 ring-blue-500' : 'ring-1 ring-gray-700 hover:ring-gray-500'
-                }`}
-                style={{ backgroundColor: getProjectColor(project.name) }}
-              >
-                {/* Left accent bar for selected project */}
-                {isSelected && (
-                  <span className="absolute -left-1.5 w-[3px] h-8 bg-blue-500 rounded-r" />
-                )}
-                {project.name.slice(0, 2).toUpperCase()}
+              <div key={project.id} className="group/project relative">
+                <button
+                  onClick={() => selectProject(project.id)}
+                  className={`relative w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold text-white transition-all ${
+                    isSelected ? 'ring-2 ring-blue-500' : 'ring-1 ring-gray-700 hover:ring-gray-500'
+                  }`}
+                  style={{ backgroundColor: getProjectColor(project.name) }}
+                >
+                  {/* Left accent bar for selected project */}
+                  {isSelected && (
+                    <span className="absolute -left-1.5 w-[3px] h-8 bg-blue-500 rounded-r" />
+                  )}
+                  {project.name.slice(0, 2).toUpperCase()}
+                </button>
+                {/* Delete button on hover */}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (window.confirm(`Delete project "${project.name}"? This cannot be undone.`)) {
+                      deleteProject(project.id);
+                    }
+                  }}
+                  className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full text-white text-[10px] leading-none flex items-center justify-center opacity-0 group-hover/project:opacity-100 transition-opacity hover:bg-red-400 z-10"
+                >
+                  ×
+                </button>
                 {/* Tooltip */}
-                <span className="absolute left-full ml-2 px-2 py-1 bg-gray-800 text-gray-200 text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50">
+                <span className="absolute left-full ml-2 px-2 py-1 bg-gray-800 text-gray-200 text-xs rounded whitespace-nowrap opacity-0 group-hover/project:opacity-100 pointer-events-none transition-opacity z-50">
                   {project.name}
                 </span>
-              </button>
+              </div>
             );
           })}
 

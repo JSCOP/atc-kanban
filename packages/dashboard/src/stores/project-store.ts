@@ -19,8 +19,8 @@ interface ProjectState {
 }
 
 function getSavedProjectId(): string {
-  if (typeof window === 'undefined') return 'default';
-  return localStorage.getItem(STORAGE_KEY) || 'default';
+  if (typeof window === 'undefined') return '';
+  return localStorage.getItem(STORAGE_KEY) || '';
 }
 
 export const useProjectStore = create<ProjectState>((set, get) => ({
@@ -59,7 +59,10 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     await apiClient.deleteProject(id);
     set((state) => ({
       projects: state.projects.filter((p) => p.id !== id),
-      selectedProjectId: state.selectedProjectId === id ? 'default' : state.selectedProjectId,
+      selectedProjectId:
+        state.selectedProjectId === id
+          ? (state.projects.find((p) => p.id !== id)?.id ?? '')
+          : state.selectedProjectId,
     }));
   },
 
@@ -75,7 +78,9 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     set((state) => ({
       projects: state.projects.filter((p) => p.id !== projectId),
       selectedProjectId:
-        state.selectedProjectId === projectId ? 'default' : state.selectedProjectId,
+        state.selectedProjectId === projectId
+          ? (state.projects.find((p) => p.id !== projectId)?.id ?? '')
+          : state.selectedProjectId,
     }));
   },
 

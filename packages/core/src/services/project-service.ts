@@ -121,9 +121,6 @@ export class ProjectService {
   }
 
   deleteProject(id: string): void {
-    if (id === 'default') {
-      throw new ATCError('CANNOT_DELETE_DEFAULT_PROJECT', 'Cannot delete default project');
-    }
 
     this.getProject(id);
 

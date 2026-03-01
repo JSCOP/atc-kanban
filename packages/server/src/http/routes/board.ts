@@ -6,7 +6,7 @@ export function createBoardRoutes(services: ATCServices) {
 
   // GET /api/board/summary - Board summary
   app.get('/summary', (c) => {
-    const projectId = c.req.query('projectId') || 'default';
+    const projectId = c.req.query('projectId');
     const summary = services.taskService.getBoardSummary(projectId);
     return c.json(summary);
   });

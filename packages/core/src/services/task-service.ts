@@ -1,6 +1,6 @@
 import { eq, and, inArray, like, desc } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
-import { tasks, taskDependencies, taskComments, progressLogs, workspaces } from '../db/schema.js';
+import { tasks, taskDependencies, taskComments, progressLogs, workspaces, projects } from '../db/schema.js';
 import type { getConnection } from '../db/connection.js';
 import type { EventBus } from './event-bus.js';
 import type { DependencyResolver } from './dependency-resolver.js';
@@ -43,7 +43,14 @@ export class TaskService {
   async createTask(input: CreateTaskInput, agentId?: string): Promise<Task> {
     const id = uuidv4();
     const now = new Date().toISOString();
-    const projectId = input.projectId || 'default';
+    let projectId = input.projectId;
+    if (!projectId) {
+      const firstProject = this.db.select({ id: projects.id }).from(projects).limit(1).get();
+      if (!firstProject) {
+        throw new ATCError('NO_PROJECT', 'No project exists. Create a project first.', 400);
+      }
+      projectId = firstProject.id;
+    }
 
     this.db
       .insert(tasks)
@@ -249,7 +256,14 @@ export class TaskService {
   /**
    * Get board summary.
    */
-  getBoardSummary(projectId: string = 'default'): BoardSummary {
+  getBoardSummary(projectId?: string): BoardSummary {
+    if (!projectId) {
+      const firstProject = this.db.select({ id: projects.id }).from(projects).limit(1).get();
+      projectId = firstProject?.id;
+    }
+    if (!projectId) {
+      return { todo: 0, locked: 0, inProgress: 0, review: 0, done: 0, failed: 0, agents: [], recentEvents: [] };
+    }
     const allTasks = this.db
       .select({ status: tasks.status })
       .from(tasks)

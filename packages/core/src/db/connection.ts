@@ -159,10 +159,6 @@ export function initializeDatabase(dbPath?: string): ReturnType<typeof drizzle> 
     CREATE INDEX IF NOT EXISTS idx_workspaces_task ON workspaces(task_id);
     CREATE INDEX IF NOT EXISTS idx_workspaces_agent ON workspaces(agent_id);
     CREATE INDEX IF NOT EXISTS idx_workspaces_status ON workspaces(status);
-
-    -- Default project
-    INSERT OR IGNORE INTO projects (id, name, description)
-    VALUES ('default', 'Default Project', 'Default project for ATC');
   `);
 
   // ── Migrations ──────────────────────────────────────────────────────────────────────
