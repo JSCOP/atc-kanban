@@ -8,10 +8,18 @@ data/
 *.tsbuildinfo
 .turbo
 nul
+$null
 test-results/
 playwright-report/
 /playwright/.cache/
+
+# Agent/session artifacts
+.worktrees/
+.sisyphus/
+temp/
+previous_session.md
+scan-result.json
+*.log
+
 # Debug screenshots
 tests/e2e/debug-*.png
-*.png
-!packages/**/*.png

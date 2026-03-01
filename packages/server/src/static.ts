@@ -1,16 +1,27 @@
-import type { Hono } from 'hono';
 import { existsSync, readFileSync } from 'node:fs';
-import { resolve, relative } from 'node:path';
+import { dirname, relative, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { serveStatic } from '@hono/node-server/serve-static';
+import type { Hono } from 'hono';
 
 /**
  * Serve dashboard static files in production mode.
  * Falls back to index.html for SPA routing.
+ *
+ * Supports two layouts:
+ *   - npm-installed: dist/public/ (copied during build:publish)
+ *   - monorepo dev:  ../../dashboard/dist (relative to server src/dist)
  */
 export function setupStaticServing(app: Hono): void {
-  // Resolve from server package to dashboard dist
-  const serverDir = import.meta.dirname || process.cwd();
-  const dashboardDist = resolve(serverDir, '../../dashboard/dist');
+  const serverDir = dirname(fileURLToPath(import.meta.url));
+
+  // npm-installed: dashboard assets are copied into dist/public/
+  const packagedPublic = resolve(serverDir, 'public');
+
+  // monorepo dev fallback: packages/dashboard/dist
+  const monorepoDashboardDist = resolve(serverDir, '../../dashboard/dist');
+
+  const dashboardDist = existsSync(packagedPublic) ? packagedPublic : monorepoDashboardDist;
 
   if (!existsSync(dashboardDist)) {
     console.log('[Static] Dashboard build not found, skipping static serving');

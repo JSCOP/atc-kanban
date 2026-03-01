@@ -5,7 +5,7 @@
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `PORT` | `4000` | HTTP server port |
-| `DB_PATH` | `resolve('./data/atc.sqlite')` | SQLite database file path (default resolved to absolute path) |
+| `DB_PATH` | `resolve(cwd, 'data/atc.sqlite')` | SQLite database file path (CWD-relative for npx compatibility) |
 | `LOCK_TTL_MINUTES` | `30` | Task lock expiry time (minutes) |
 | `HEARTBEAT_TIMEOUT_SECONDS` | `60` | (Legacy) Heartbeat timeout — replaced by PID health check |
 | `LOG_LEVEL` | `info` | Log verbosity |
@@ -36,8 +36,17 @@
 | Package | Tool | Config |
 |---------|------|--------|
 | core | tsup | `tsup.config.ts` — ESM, `better-sqlite3` external |
-| server | tsup | `tsup.config.ts` — ESM, CJS shim for `better-sqlite3` |
+| server | tsup | `tsup.config.ts` — ESM, `noExternal: ['@atc/core']`, CJS shim + shebang banner |
 | dashboard | Vite | `vite.config.ts` — React plugin, Tailwind v4, proxy `/api`→`:4000` |
+
+## npm Package Architecture
+
+Server package (`agent-task-coordinator`) is the publishable unit:
+- `tsup` bundles `@atc/core` inline via `noExternal`
+- `better-sqlite3` stays external (native module, installed at runtime)
+- Dashboard assets copied to `dist/public/` via `scripts/copy-dashboard.mjs`
+- `static.ts` resolves dashboard from `dist/public/` (npm) or `../../dashboard/dist` (monorepo dev)
+- Shebang (`#!/usr/bin/env node`) added via tsup banner for `npx` compatibility
 
 ## Vite Dev Proxy
 
@@ -68,3 +77,5 @@ packages:
 ## MCP Integration (`opencode.json`)
 
 Configures ATC as MCP server for AI agents. Uses `--mcp` flag for stdio mode.
+
+For npm-installed usage: `npx agent-task-coordinator --mcp`

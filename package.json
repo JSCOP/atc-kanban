@@ -1,12 +1,13 @@
 {
-  "name": "agent-task-coordinator",
+  "name": "@atc/monorepo",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "concurrently -n server,dashboard -c blue,green \"pnpm dev:server\" \"pnpm dev:dashboard\"",
-    "dev:server": "pnpm -F @atc/server dev",
+    "dev:server": "pnpm -F atc-kanban dev",
     "dev:dashboard": "pnpm -F @atc/dashboard dev",
-    "build": "pnpm -F @atc/core build && pnpm -F @atc/server build && pnpm -F @atc/dashboard build",
+    "build": "pnpm -F @atc/core build && pnpm -F atc-kanban build && pnpm -F @atc/dashboard build",
+    "build:publish": "pnpm -F @atc/core build && pnpm -F @atc/dashboard build && pnpm -F atc-kanban build && pnpm -F atc-kanban copy:dashboard",
     "start": "node packages/server/dist/index.js",
     "db:generate": "pnpm -F @atc/core db:generate",
     "db:migrate": "pnpm -F @atc/core db:migrate",

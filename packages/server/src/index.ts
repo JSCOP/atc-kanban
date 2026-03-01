@@ -13,12 +13,9 @@ import { createWebSocketHandler } from './ws/handler.js';
 // ── Configuration ───────────────────────────────────────────────────────────
 
 const PORT = Number.parseInt(process.env.PORT || '4000', 10);
-// DB_PATH: derive from the built file location so MCP satellite processes share the same DB
-// regardless of their CWD. fileURLToPath + dirname gives the directory of this file,
-// then we navigate up to the repo root. Works for both dev (src/) and prod (dist/) paths.
-const __filename = new URL(import.meta.url).pathname.replace(/^\/([A-Z]:)/i, '$1');
-const __dirname = dirname(__filename);
-const DB_PATH = process.env.DB_PATH || resolve(__dirname, '../../../data/atc.sqlite');
+// DB_PATH: when installed via npm/npx, use CWD-relative path so the DB is created
+// in the user's project directory. Users can override via DB_PATH env var.
+const DB_PATH = process.env.DB_PATH || resolve(process.cwd(), 'data/atc.sqlite');
 const LOCK_TTL_MINUTES = Number.parseInt(process.env.LOCK_TTL_MINUTES || '30', 10);
 // PID-based health checking replaces heartbeat-based timeout
 

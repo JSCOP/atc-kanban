@@ -101,10 +101,11 @@ ATC orchestrates AI agents (main + workers) collaborating on tasks via a kanban 
 ```bash
 pnpm dev              # Server (tsx watch :4000) + Dashboard (vite :5173) concurrently
 pnpm build            # Build all: core → server → dashboard
+pnpm build:publish    # Build for npm: core → dashboard → server (bundled) → copy assets
 pnpm start            # Production: node packages/server/dist/index.js
 pnpm lint             # biome check .
 pnpm format           # biome format --write .
-pnpm test             # vitest (unit — currently no test files)
+pnpm test             # vitest unit tests
 pnpm test:e2e         # playwright test (requires built server running on :4000)
 pnpm db:generate      # Drizzle: generate migration from schema changes
 pnpm db:migrate       # Drizzle: apply pending migrations

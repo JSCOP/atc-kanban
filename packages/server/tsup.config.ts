@@ -8,7 +8,8 @@ export default defineConfig({
   clean: true,
   target: 'node20',
   external: ['better-sqlite3'],
+  noExternal: ['@atc/core'],
   banner: {
-    js: "import { createRequire } from 'module'; const require = createRequire(import.meta.url);",
+    js: "#!/usr/bin/env node\nimport { createRequire } from 'module'; const require = createRequire(import.meta.url);",
   },
 });
