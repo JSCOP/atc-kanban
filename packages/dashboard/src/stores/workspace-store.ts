@@ -9,6 +9,8 @@ interface WorkspaceState {
   fetchWorkspaces: (status?: string) => Promise<void>;
   updateWorkspace: (workspace: Workspace) => void;
   removeWorkspace: (workspaceId: string) => void;
+  deleteWorkspaceApi: (workspaceId: string) => Promise<void>;
+  archiveWorkspaceApi: (workspaceId: string) => Promise<void>;
 }
 
 export const useWorkspaceStore = create<WorkspaceState>((set) => ({
@@ -41,5 +43,29 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
     set((state) => ({
       workspaces: state.workspaces.filter((w) => w.id !== workspaceId),
     }));
+  },
+
+  deleteWorkspaceApi: async (workspaceId: string) => {
+    try {
+      await apiClient.deleteWorkspace(workspaceId);
+      set((state) => ({
+        workspaces: state.workspaces.filter((w) => w.id !== workspaceId),
+      }));
+    } catch (err) {
+      console.error('Failed to delete workspace:', err);
+      throw err;
+    }
+  },
+
+  archiveWorkspaceApi: async (workspaceId: string) => {
+    try {
+      await apiClient.archiveWorkspace(workspaceId);
+      // Re-fetch to get updated status
+      const workspaces = await apiClient.getWorkspaces();
+      set({ workspaces });
+    } catch (err) {
+      console.error('Failed to archive workspace:', err);
+      throw err;
+    }
   },
 }));

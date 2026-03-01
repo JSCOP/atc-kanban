@@ -1,12 +1,17 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../api/client';
 import { useProjectStore } from '../stores/project-store';
+import { useWorkspaceStore } from '../stores/workspace-store';
 import type { BoardSummary, Workspace } from '../types';
+
+type WorkspaceFilter = 'all' | 'active' | 'archived' | 'deleted';
+
 export function SettingsPage() {
   const { currentProject } = useProjectStore();
+  const workspaceStore = useWorkspaceStore();
   const [health, setHealth] = useState<{ status: string; timestamp: string } | null>(null);
   const [summary, setSummary] = useState<BoardSummary | null>(null);
-  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
+  const [wsFilter, setWsFilter] = useState<WorkspaceFilter>('all');
   const [loading, setLoading] = useState(true);
   const [serverInfo, setServerInfo] = useState<{
     pid: number;
@@ -17,18 +22,19 @@ export function SettingsPage() {
   } | null>(null);
   const [actionLoading, setActionLoading] = useState<'shutdown' | 'restart' | null>(null);
   const [actionResult, setActionResult] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [workspaceActionLoading, setWorkspaceActionLoading] = useState<string | null>(null);
 
   const loadData = useCallback(() => {
     Promise.all([
       fetch('/api/health').then((r) => r.json()),
       api.getBoardSummary(),
-      api.getWorkspaces('active'),
+      api.getWorkspaces(),
       api.getServerInfo().catch(() => null),
     ])
       .then(([h, s, w, info]) => {
         setHealth(h);
         setSummary(s);
-        setWorkspaces(w);
+        workspaceStore.fetchWorkspaces();
         setServerInfo(info);
       })
       .catch(console.error)
@@ -85,6 +91,50 @@ export function SettingsPage() {
       setActionLoading(null);
     }
   };
+
+  const handleDeleteWorkspace = async (workspace: Workspace) => {
+    const confirmed = window.confirm(
+      'Delete this workspace? This will also archive all other active workspaces in the same repository. This action is a soft-delete (data is preserved in DB).',
+    );
+    if (!confirmed) return;
+
+    setWorkspaceActionLoading(workspace.id);
+    try {
+      await workspaceStore.deleteWorkspaceApi(workspace.id);
+    } catch {
+      // Error already logged in store
+    } finally {
+      setWorkspaceActionLoading(null);
+    }
+  };
+
+  const handleArchiveWorkspace = async (workspace: Workspace) => {
+    const confirmed = window.confirm(
+      'Archive this workspace? It will be marked as archived and won\'t be used for new tasks.',
+    );
+    if (!confirmed) return;
+
+    setWorkspaceActionLoading(workspace.id);
+    try {
+      await workspaceStore.archiveWorkspaceApi(workspace.id);
+    } catch {
+      // Error already logged in store
+    } finally {
+      setWorkspaceActionLoading(null);
+    }
+  };
+
+  const filteredWorkspaces = useMemo(() => {
+    if (wsFilter === 'all') return workspaceStore.workspaces;
+    return workspaceStore.workspaces.filter((ws) => ws.status === wsFilter);
+  }, [workspaceStore.workspaces, wsFilter]);
+
+  const filterTabs: { key: WorkspaceFilter; label: string }[] = [
+    { key: 'all', label: 'All' },
+    { key: 'active', label: 'Active' },
+    { key: 'archived', label: 'Archived' },
+    { key: 'deleted', label: 'Deleted' },
+  ];
 
   if (loading) {
     return (
@@ -237,28 +287,91 @@ export function SettingsPage() {
 
       {/* Workspaces */}
       <div className="bg-gray-800 rounded-lg p-5 space-y-4">
-        <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide">Workspaces</h2>
-        {workspaces.length === 0 ? (
-          <p className="text-sm text-gray-500">No active workspaces registered</p>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide">Workspaces</h2>
+          {/* Filter Tabs */}
+          <div className="flex flex-wrap gap-1">
+            {filterTabs.map((tab) => (
+              <button
+                key={tab.key}
+                onClick={() => setWsFilter(tab.key)}
+                className={`px-3 py-1 text-[11px] font-medium rounded-full transition-colors cursor-pointer ${
+                  wsFilter === tab.key
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-700/50 text-gray-400 hover:bg-gray-700 hover:text-gray-300'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {filteredWorkspaces.length === 0 ? (
+          <p className="text-sm text-gray-500">
+            {wsFilter === 'all'
+              ? 'No workspaces registered'
+              : `No ${wsFilter} workspaces found`}
+          </p>
         ) : (
           <div className="space-y-3">
-            {workspaces.map((ws) => (
-              <div key={ws.id} className="bg-gray-900 rounded-lg p-3">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-mono text-gray-300 truncate" title={ws.repoRoot}>
+            {filteredWorkspaces.map((ws) => (
+              <div
+                key={ws.id}
+                className={`bg-gray-900 rounded-lg p-3 transition-opacity ${
+                  ws.status === 'deleted' ? 'opacity-50' : ''
+                }`}
+              >
+                <div className="flex items-start justify-between gap-2 mb-2">
+                  <span className="text-sm font-mono text-gray-300 truncate flex-1" title={ws.repoRoot}>
                     {ws.repoRoot}
                   </span>
-                  <span
-                    className={`text-xs px-2 py-0.5 rounded ${
-                      ws.status === 'active'
-                        ? 'bg-green-500/20 text-green-400'
-                        : ws.status === 'archived'
-                          ? 'bg-yellow-500/20 text-yellow-400'
-                          : 'bg-red-500/20 text-red-400'
-                    }`}
-                  >
-                    {ws.status}
-                  </span>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    {/* Action Buttons */}
+                    {ws.status !== 'deleted' && workspaceActionLoading !== ws.id && (
+                      <>
+                        {ws.status === 'active' && (
+                          <button
+                            onClick={() => handleArchiveWorkspace(ws)}
+                            disabled={workspaceActionLoading === ws.id}
+                            className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-yellow-400 hover:text-yellow-300 hover:bg-yellow-500/10 rounded transition-colors cursor-pointer"
+                            title="Archive workspace"
+                          >
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+                            </svg>
+                            Archive
+                          </button>
+                        )}
+                        <button
+                          onClick={() => handleDeleteWorkspace(ws)}
+                          disabled={workspaceActionLoading === ws.id}
+                          className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded transition-colors cursor-pointer"
+                          title="Delete workspace"
+                        >
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                          Delete
+                        </button>
+                      </>
+                    )}
+                    {workspaceActionLoading === ws.id && (
+                      <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                    )}
+                    {/* Status Badge */}
+                    <span
+                      className={`text-xs px-2 py-0.5 rounded ${
+                        ws.status === 'active'
+                          ? 'bg-green-500/20 text-green-400'
+                          : ws.status === 'archived'
+                            ? 'bg-yellow-500/20 text-yellow-400'
+                            : 'bg-red-500/20 text-red-400'
+                      }`}
+                    >
+                      {ws.status}
+                    </span>
+                  </div>
                 </div>
                 <div className="grid grid-cols-3 gap-2 text-xs text-gray-500">
                   <div>
@@ -268,7 +381,7 @@ export function SettingsPage() {
                     Base: <span className="text-gray-400">{ws.baseBranch}</span>
                   </div>
                   <div>
-                    Task:{' '}
+                    Task:{" "}
                     <span className="text-gray-400">{ws.taskId ? ws.taskId.slice(0, 8) : '—'}</span>
                   </div>
                 </div>

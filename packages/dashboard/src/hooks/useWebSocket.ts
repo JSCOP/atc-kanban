@@ -4,11 +4,13 @@ import { useBoardStore } from '../stores/board-store';
 import { useAgentStore } from '../stores/agent-store';
 import { useEventStore } from '../stores/event-store';
 import { useProjectStore } from '../stores/project-store';
+import { useWorkspaceStore } from '../stores/workspace-store';
 
 export function useWebSocket() {
   const boardStore = useBoardStore();
   const agentStore = useAgentStore();
   const eventStore = useEventStore();
+  const workspaceStore = useWorkspaceStore();
   const selectedProjectId = useProjectStore((s) => s.selectedProjectId);
   const addProject = useProjectStore((s) => s.addProject);
   const removeProject = useProjectStore((s) => s.removeProject);
@@ -58,6 +60,12 @@ export function useWebSocket() {
           break;
         case 'project:deleted':
           removeProject(message.projectId);
+          break;
+        case 'workspace:created':
+          workspaceStore.updateWorkspace(message.workspace);
+          break;
+        case 'workspace:deleted':
+          workspaceStore.removeWorkspace(message.workspaceId);
           break;
       }
     });

@@ -209,6 +209,8 @@ export const api = {
     const res = await fetchApi<{ workspace: Workspace | null }>(`/workspaces/by-task/${taskId}`);
     return res.workspace;
   },
+  archiveWorkspace: (id: string) => fetchApi<{ ok: boolean }>(`/workspaces/${id}/archive`, { method: 'POST' }),
+  deleteWorkspace: (id: string) => fetchApi<{ ok: boolean }>(`/workspaces/${id}`, { method: 'DELETE' }),
 
   // Dispatch
   dispatchTask: async (input: DispatchTaskInput) => {
