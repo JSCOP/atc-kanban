@@ -26,6 +26,14 @@
     "orchestration"
   ],
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/JSCOP/atc-kanban.git"
+  },
+  "homepage": "https://github.com/JSCOP/atc-kanban#readme",
+  "bugs": {
+    "url": "https://github.com/JSCOP/atc-kanban/issues"
+  },
   "dependencies": {
     "@hono/node-server": "^1.14.0",
     "@modelcontextprotocol/sdk": "^1.12.0",
