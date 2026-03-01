@@ -1,6 +1,6 @@
 {
   "name": "atc-kanban",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Multi-agent task orchestration system with kanban board — MCP server + HTTP dashboard",
   "type": "module",
   "main": "dist/index.js",
@@ -8,7 +8,9 @@
     "atc-kanban": "./dist/index.js",
     "atc": "./dist/index.js"
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsup",
     "copy:dashboard": "node scripts/copy-dashboard.mjs",
@@ -29,6 +31,7 @@
     "@modelcontextprotocol/sdk": "^1.12.0",
     "better-sqlite3": "^11.8.0",
     "drizzle-orm": "^0.38.0",
+    "env-paths": "^4.0.0",
     "hono": "^4.7.0",
     "uuid": "^11.1.0",
     "ws": "^8.18.0",

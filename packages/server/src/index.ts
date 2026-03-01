@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { dirname, resolve } from 'node:path';
+import envPaths from 'env-paths';
 import { closeConnection, createServices } from '@atc/core';
 import { serve } from '@hono/node-server';
 import { createApp } from './http/app.js';
@@ -13,9 +14,14 @@ import { createWebSocketHandler } from './ws/handler.js';
 // ── Configuration ───────────────────────────────────────────────────────────
 
 const PORT = Number.parseInt(process.env.PORT || '4000', 10);
-// DB_PATH: when installed via npm/npx, use CWD-relative path so the DB is created
-// in the user's project directory. Users can override via DB_PATH env var.
-const DB_PATH = process.env.DB_PATH || resolve(process.cwd(), 'data/atc.sqlite');
+// DB_PATH: use platform-specific data directory so the same DB is used
+// regardless of where the user runs the command.
+//   Windows: %LOCALAPPDATA%/atc-kanban-nodejs/Data/atc.sqlite
+//   macOS:   ~/Library/Application Support/atc-kanban-nodejs/atc.sqlite
+//   Linux:   ~/.local/share/atc-kanban-nodejs/atc.sqlite
+// Users can override via DB_PATH env var.
+const paths = envPaths('atc-kanban');
+const DB_PATH = process.env.DB_PATH || resolve(paths.data, 'atc.sqlite');
 const LOCK_TTL_MINUTES = Number.parseInt(process.env.LOCK_TTL_MINUTES || '30', 10);
 // PID-based health checking replaces heartbeat-based timeout
 
