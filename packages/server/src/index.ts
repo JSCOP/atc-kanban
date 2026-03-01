@@ -116,7 +116,7 @@ services.eventBus.on('TASK_CREATED', async (event) => {
     if (workers.length === 0) return;
 
     const workerList = workers
-      .map((w) => `- ${w.name} (ID: ${w.id})${w.sessionId ? ' [has active session]' : ''}`)
+      .map((w) => `- ${w.name} (ID: ${w.id})${w.sessionId ? ` [session: ${w.sessionId}]` : ''}`)
       .join('\n');
 
     const message =

@@ -432,8 +432,35 @@ export class OpenCodeBridge {
           );
         }
         sessionIdToUse = input.sessionId;
+      } else if (agent.sessionId) {
+        // Agent has an active session — try to reuse it before creating a new one
+        const validateRes = await fetch(`${agent.serverUrl}/session/${agent.sessionId}`, {
+          signal: AbortSignal.timeout(5000),
+        });
+        if (validateRes.ok) {
+          sessionIdToUse = agent.sessionId;
+        } else {
+          // Active session is stale/gone — create a new one
+          const sessionRes = await fetch(`${agent.serverUrl}/session`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title: tagSessionTitle(`ATC: ${task.title}`, agent.name) }),
+            signal: AbortSignal.timeout(10000),
+          });
+
+          if (!sessionRes.ok) {
+            throw new ATCError(
+              'OPENCODE_SESSION_ERROR',
+              `Failed to create session: ${sessionRes.statusText}`,
+              502,
+            );
+          }
+
+          const session = (await sessionRes.json()) as { id: string };
+          sessionIdToUse = session.id;
+        }
       } else {
-        // Create a new session on the OpenCode server
+        // No session provided, no active session on agent — create a new one
         const sessionRes = await fetch(`${agent.serverUrl}/session`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -537,8 +564,10 @@ export class OpenCodeBridge {
         taskId: input.taskId,
         sessionId: sessionIdToUse,
         message: input.sessionId
-          ? `Task dispatched to ${agent.name} (reusing session)`
-          : `Task dispatched to ${agent.name}`,
+          ? `Task dispatched to ${agent.name} (reusing requested session)`
+          : sessionIdToUse === agent.sessionId
+            ? `Task dispatched to ${agent.name} (reusing active session)`
+            : `Task dispatched to ${agent.name} (new session)`,
         lockToken: claimResult.lockToken,
       };
     } catch (error) {
