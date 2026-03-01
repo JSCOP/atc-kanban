@@ -239,6 +239,48 @@ export class OpenCodeBridge {
   }
 
   /**
+   * Fetch instance path info from an OpenCode server.
+   * Calls GET /path to get directory and worktree paths.
+   * This is a lightweight probe — does NOT require an agent record.
+   */
+  async fetchInstancePath(
+    serverUrl: string,
+  ): Promise<{ directory: string; worktree: string } | null> {
+    try {
+      const res = await fetch(`${serverUrl}/path`, {
+        signal: AbortSignal.timeout(3000),
+      });
+      if (!res.ok) return null;
+      const data = (await res.json()) as { directory?: string; worktree?: string };
+      return {
+        directory: data.directory ?? '',
+        worktree: data.worktree ?? '',
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Fetch session busy/idle statuses from an OpenCode instance.
+   * Calls GET /session/status to get live status of all sessions.
+   * Returns a map of sessionId → { type: 'busy' | 'idle' }.
+   */
+  async fetchSessionStatuses(
+    serverUrl: string,
+  ): Promise<Record<string, { type: string }>> {
+    try {
+      const res = await fetch(`${serverUrl}/session/status`, {
+        signal: AbortSignal.timeout(3000),
+      });
+      if (!res.ok) return {};
+      return (await res.json()) as Record<string, { type: string }>;
+    } catch {
+      return {};
+    }
+  }
+
+  /**
    * Create a new session on an OpenCode agent.
    * Calls POST /session on the OpenCode server.
    */

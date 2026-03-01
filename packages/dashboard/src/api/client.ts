@@ -260,12 +260,8 @@ export const api = {
   },
 
   // Discovery
-  discoverAgents: async (portStart?: number, portEnd?: number) => {
-    const params = new URLSearchParams();
-    if (portStart !== undefined) params.set('portStart', String(portStart));
-    if (portEnd !== undefined) params.set('portEnd', String(portEnd));
-    const qs = params.toString();
-    return fetchApi<DiscoveryResult>(`/agents/discover${qs ? `?${qs}` : ''}`);
+  discoverAgents: async () => {
+    return fetchApi<DiscoveryResult>('/agents/discover');
   },
   trackDiscoveredAgent: async (serverUrl: string, name?: string) => {
     return fetchApi<{ agentId: string }>('/agents/discover/track', {

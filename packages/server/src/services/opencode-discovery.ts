@@ -7,9 +7,13 @@ const execAsync = promisify(exec);
 export interface DiscoveredInstance {
   serverUrl: string;
   port: number;
+  pid: number | null;
   healthy: boolean;
   alreadyRegistered: boolean;
   existingAgentId: string | null;
+  projectDirectory: string | null;
+  sessionCount: number;
+  busySessionCount: number;
 }
 
 export interface DetectedProcess {
@@ -23,18 +27,20 @@ export interface DetectedProcess {
 export interface DiscoveryResult {
   discovered: DiscoveredInstance[];
   processes: DetectedProcess[];
-  scannedRange: [number, number];
+  portsScanned: number;
   duration: number;
 }
 
 /**
- * Scans a local port range for running OpenCode instances
- * and detects running OpenCode processes on the system.
+ * PID-first discovery for running OpenCode instances.
  *
- * Three detection vectors:
+ * Detection flow:
  * 1. Process detection — OS-level process listing to find opencode binaries
  * 2. PID→Port mapping — OS network state (netstat/ss) to find actual listen ports
- * 3. Port probing — GET /global/health on priority ports + PID-derived ports + configurable range
+ * 3. Port probing — GET /global/health on PID-derived ports + priority port + existing agent URLs
+ * 4. Enrichment — GET /path + /session/status on each discovered instance
+ * 5. Reconciliation — re-associate agents whose port changed (session match → project dir match)
+ * 6. Session assignment — group-based session→agent mapping with MCP cross-reference
  */
 
 /** Check if an agent name is auto-generated (OpenCode@port or OpenCode-timestamp) */
@@ -52,10 +58,12 @@ export class OpenCodeDiscovery {
   }
 
   /**
-   * Scan for OpenCode instances via port probing + process detection.
-   * Returns HTTP-reachable instances and detected OS processes.
+   * Scan for OpenCode instances using PID-first discovery.
+   * No fixed port range — discovers ALL ports via OS process/network state.
+   * Enriches each instance with project directory and session status.
+   * Reconciles disconnected agents whose port has changed.
    */
-  async scan(portStart = 14000, portEnd = 15000): Promise<DiscoveryResult> {
+  async scan(): Promise<DiscoveryResult> {
     const start = Date.now();
 
     // Get all existing OpenCode agents from DB for matching
@@ -85,9 +93,21 @@ export class OpenCodeDiscovery {
       pidPorts.push(...proc.listenPorts);
     }
 
-    // Step 3: Build port list: priority + range + PID-derived (deduplicated)
-    const rangePorts = Array.from({ length: portEnd - portStart + 1 }, (_, i) => portStart + i);
-    const allPorts = [...new Set([...OpenCodeDiscovery.PRIORITY_PORTS, ...rangePorts, ...pidPorts])];
+    // Step 3: Build port list — PID-derived + priority + existing agent URLs (NO fixed range)
+    const existingPorts = existingAgents
+      .filter((a) => a.serverUrl)
+      .map((a) => {
+        try {
+          return Number.parseInt(new URL(a.serverUrl!).port, 10);
+        } catch {
+          return 0;
+        }
+      })
+      .filter((p) => p > 0);
+
+    const allPorts = [
+      ...new Set([...OpenCodeDiscovery.PRIORITY_PORTS, ...pidPorts, ...existingPorts]),
+    ];
 
     // Skip the ATC server's own port
     const atcPort = Number.parseInt(process.env.PORT || '4000', 10);
@@ -103,24 +123,38 @@ export class OpenCodeDiscovery {
       if (result.status === 'fulfilled' && result.value) {
         const { port, serverUrl } = result.value;
         const existingId = existingByUrl.get(serverUrl) ?? null;
+
+        // Find PID for this port from OS network state
+        const pid = this.findPidForPort(port, listenMap);
+
         discovered.push({
           serverUrl,
           port,
+          pid,
           healthy: true,
           alreadyRegistered: existingId !== null,
           existingAgentId: existingId,
+          projectDirectory: null,
+          sessionCount: 0,
+          busySessionCount: 0,
         });
       }
     }
 
-    // Step 5: Cross-reference — mark processes whose listen ports were discovered
+    // Step 5: Enrich discovered instances with /path and /session/status data
+    await Promise.allSettled(discovered.map((inst) => this.enrichInstance(inst)));
+
+    // Step 6: Reconcile — re-associate disconnected agents whose port changed
+    await this.reconcileAgents(discovered, existingAgents);
+
+    // Step 7: Cross-reference — mark processes whose listen ports were discovered
     for (const proc of processes) {
       if (proc.listenPorts.some((p) => discovered.some((d) => d.port === p))) {
         proc.hasHttpServer = true;
       }
     }
 
-    // Step 6: Group-based session assignment.
+    // Step 8: Group-based session assignment.
     // All OpenCode instances sharing the same CWD/project share a single session store.
     // We fetch the session list ONCE per CWD group, then assign unique sessions to each agent.
     const agentsWithUrl = existingAgents.filter((a) => a.serverUrl);
@@ -138,7 +172,9 @@ export class OpenCodeDiscovery {
         [...cwdGroups.values()].map(async (group) => {
           // Fetch CWD for agents missing it (use first agent's serverUrl)
           const representative = group[0];
-          const sessions = await this.services.opencodeBridge.fetchAllSessions(representative.serverUrl!);
+          const sessions = await this.services.opencodeBridge.fetchAllSessions(
+            representative.serverUrl!,
+          );
 
           // Update CWD for any agents missing it
           for (const a of group) {
@@ -206,7 +242,9 @@ export class OpenCodeDiscovery {
           for (const a of group) {
             // Re-read the agent's current sessionId (may have been updated above)
             const currentAgent = this.services.agentRegistry.getById(a.id);
-            const mcpMatch = currentAgent.sessionId ? mcpBySessionId.get(currentAgent.sessionId) : undefined;
+            const mcpMatch = currentAgent.sessionId
+              ? mcpBySessionId.get(currentAgent.sessionId)
+              : undefined;
 
             if (mcpMatch) {
               // MCP agent found — use its name and role as primary source of truth
@@ -214,7 +252,10 @@ export class OpenCodeDiscovery {
                 await this.services.agentRegistry.renameAgent(a.id, mcpMatch.name);
               }
               if (currentAgent.role !== mcpMatch.role) {
-                await this.services.agentRegistry.updateRole(a.id, mcpMatch.role as 'main' | 'worker');
+                await this.services.agentRegistry.updateRole(
+                  a.id,
+                  mcpMatch.role as 'main' | 'worker',
+                );
               }
             } else {
               // No MCP match — fall back to session title
@@ -231,9 +272,123 @@ export class OpenCodeDiscovery {
     return {
       discovered,
       processes,
-      scannedRange: [portStart, portEnd],
+      portsScanned: allPorts.length,
       duration: Date.now() - start,
     };
+  }
+
+  /**
+   * Find the PID associated with a given port from OS network state.
+   */
+  private findPidForPort(port: number, listenMap: Map<number, number[]>): number | null {
+    for (const [pid, ports] of listenMap) {
+      if (ports.includes(port)) return pid;
+    }
+    return null;
+  }
+
+  /**
+   * Enrich a discovered instance with project directory and session status data.
+   * Calls GET /path and GET /session/status on the instance in parallel.
+   */
+  private async enrichInstance(instance: DiscoveredInstance): Promise<void> {
+    const [pathInfo, statuses, sessions] = await Promise.all([
+      this.services.opencodeBridge.fetchInstancePath(instance.serverUrl),
+      this.services.opencodeBridge.fetchSessionStatuses(instance.serverUrl),
+      this.services.opencodeBridge.fetchAllSessions(instance.serverUrl),
+    ]);
+
+    if (pathInfo) {
+      instance.projectDirectory = pathInfo.directory || null;
+    }
+
+    instance.sessionCount = sessions.length;
+    const busyCount = Object.values(statuses).filter((s) => s.type === 'busy').length;
+    instance.busySessionCount = busyCount;
+  }
+
+  /**
+   * Reconcile discovered instances with existing agents.
+   * Handles port changes by re-associating agents to new URLs.
+   *
+   * Matching hierarchy (strongest → weakest):
+   * 1. Exact serverUrl match → already registered (handled before this step)
+   * 2. Session ID match → agent's session found on instance → reconnect
+   * 3. Same project directory + disconnected agent → reconnect (weakest, disconnected only)
+   */
+  private async reconcileAgents(
+    discovered: DiscoveredInstance[],
+    existingAgents: Array<{
+      id: string;
+      serverUrl: string | null;
+      sessionId: string | null;
+      status: string;
+      cwd: string | null;
+    }>,
+  ): Promise<void> {
+    const unmatched = discovered.filter((d) => !d.alreadyRegistered);
+    if (unmatched.length === 0) return;
+
+    for (const instance of unmatched) {
+      // Try session ID match: fetch instance sessions and check against agent sessionIds
+      const sessions = await this.services.opencodeBridge.fetchAllSessions(instance.serverUrl);
+      const instanceSessionIds = new Set(sessions.map((s) => s.id));
+
+      // Find an existing agent whose sessionId appears in this instance's sessions
+      const sessionMatch = existingAgents.find(
+        (a) =>
+          a.sessionId &&
+          instanceSessionIds.has(a.sessionId) &&
+          !this.isAlreadyMatched(a.id, discovered),
+      );
+
+      if (sessionMatch) {
+        // Strong match: session ID links this instance to an existing agent
+        await this.services.agentRegistry.reconnectOpenCodeAgent(
+          sessionMatch.id,
+          instance.serverUrl,
+          {
+            cwd: instance.projectDirectory ?? undefined,
+            processId: instance.pid ?? undefined,
+          },
+        );
+        instance.alreadyRegistered = true;
+        instance.existingAgentId = sessionMatch.id;
+        continue;
+      }
+
+      // Try project directory match for disconnected agents only (weakest signal)
+      if (instance.projectDirectory) {
+        const dirMatch = existingAgents.find(
+          (a) =>
+            a.status === 'disconnected' &&
+            a.cwd === instance.projectDirectory &&
+            !this.isAlreadyMatched(a.id, discovered),
+        );
+
+        if (dirMatch) {
+          // Weaker match: same project directory + agent was disconnected
+          await this.services.agentRegistry.reconnectOpenCodeAgent(
+            dirMatch.id,
+            instance.serverUrl,
+            {
+              cwd: instance.projectDirectory,
+              processId: instance.pid ?? undefined,
+            },
+          );
+          instance.alreadyRegistered = true;
+          instance.existingAgentId = dirMatch.id;
+          continue;
+        }
+      }
+    }
+  }
+
+  /**
+   * Check if an agent ID is already matched to a discovered instance.
+   */
+  private isAlreadyMatched(agentId: string, discovered: DiscoveredInstance[]): boolean {
+    return discovered.some((d) => d.existingAgentId === agentId);
   }
 
   /**
@@ -484,9 +639,7 @@ export class OpenCodeDiscovery {
         .where(eq(schema.agents.connectionType, 'opencode'))
         .all();
 
-      const sameGroupAgents = existingAgents.filter(
-        (a) => a.cwd === cwd,
-      );
+      const sameGroupAgents = existingAgents.filter((a) => a.cwd === cwd);
       const assignedSessionIds = new Set(
         sameGroupAgents
           .filter((a) => a.sessionId && sessions.some((s) => s.id === a.sessionId))
@@ -499,11 +652,18 @@ export class OpenCodeDiscovery {
     // Determine agent name: explicit name > MCP agent name > session title > generic fallback
     // Also cross-reference MCP-registered agents for trusted name and role
     const mcpAgents = assignedSession
-      ? this.services.db.select().from(schema.agents).where(eq(schema.agents.connectionType, 'mcp')).all()
+      ? this.services.db
+          .select()
+          .from(schema.agents)
+          .where(eq(schema.agents.connectionType, 'mcp'))
+          .all()
       : [];
-    const mcpMatch = assignedSession ? mcpAgents.find((a) => a.sessionId === assignedSession!.id) : undefined;
+    const mcpMatch = assignedSession
+      ? mcpAgents.find((a) => a.sessionId === assignedSession!.id)
+      : undefined;
 
-    let agentName = name || mcpMatch?.name || assignedSession?.title || `OpenCode@${new URL(serverUrl).port}`;
+    const agentName =
+      name || mcpMatch?.name || assignedSession?.title || `OpenCode@${new URL(serverUrl).port}`;
 
     const agent = await this.services.agentRegistry.registerOpenCodeAgent({
       name: agentName,
@@ -521,7 +681,10 @@ export class OpenCodeDiscovery {
       if (mcpMatch) {
         // Sync role from MCP agent (most trusted source)
         if (agent.role !== mcpMatch.role) {
-          await this.services.agentRegistry.updateRole(agent.id, mcpMatch.role as 'main' | 'worker');
+          await this.services.agentRegistry.updateRole(
+            agent.id,
+            mcpMatch.role as 'main' | 'worker',
+          );
         }
       }
     }
@@ -541,4 +704,3 @@ export class OpenCodeDiscovery {
     return { agentId: agent.id };
   }
 }
-

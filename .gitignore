@@ -17,6 +17,7 @@ playwright-report/
 .worktrees/
 .sisyphus/
 temp/
+.tmp-opencode/
 previous_session.md
 scan-result.json
 *.log

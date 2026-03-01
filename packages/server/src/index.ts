@@ -48,6 +48,7 @@ const services = createServices({
 
 let healthChecker: ReturnType<typeof setInterval> | undefined;
 let reviewPoller: ReturnType<typeof setInterval> | undefined;
+let discoveryPoller: ReturnType<typeof setInterval> | undefined;
 
 // Track notified review tasks (dedup across listener + poller)
 const reviewNotified = new Set<string>();
@@ -144,6 +145,25 @@ if (!isMcpMode) {
   for (const t of reviewTasks) {
     sendReviewNotification(t.id).catch((err) => {
       console.error(`[ATC] Startup review notification failed for task ${t.id}:`, err);
+    });
+  }
+
+  // Periodic OpenCode discovery scan (30s) — PID-first, no fixed port ranges.
+  // Discovers new instances, reconnects agents whose port changed, updates sessions.
+  discoveryPoller = setInterval(async () => {
+    try {
+      const disc = new OpenCodeDiscovery(services);
+      await disc.scan();
+    } catch (err) {
+      console.error('[ATC] Discovery scan error:', err);
+    }
+  }, 30000);
+
+  // Run initial discovery scan at startup
+  {
+    const disc = new OpenCodeDiscovery(services);
+    disc.scan().catch((err) => {
+      console.error('[ATC] Initial discovery scan failed:', err);
     });
   }
 }
@@ -280,6 +300,7 @@ if (isMcpMode) {
     services.lockEngine.stopExpiryChecker();
     if (healthChecker) clearInterval(healthChecker);
     if (reviewPoller) clearInterval(reviewPoller);
+    if (discoveryPoller) clearInterval(discoveryPoller);
 
     // Force-close all WebSocket connections so server.close() can finish
     for (const client of wss.clients) {

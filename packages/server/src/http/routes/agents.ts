@@ -126,7 +126,7 @@ export function createAgentRoutes(
     // 2. Re-run discovery scan if available
     if (discovery) {
       try {
-        await discovery.scan(4096, 15000);
+        await discovery.scan();
       } catch {
         // Non-fatal: discovery failure shouldn't block reload
       }
@@ -205,9 +205,7 @@ export function createAgentRoutes(
       return c.json({ error: 'Discovery not available' }, 503);
     }
     try {
-      const portStart = Number.parseInt(c.req.query('portStart') || '14000', 10);
-      const portEnd = Number.parseInt(c.req.query('portEnd') || '15000', 10);
-      const result = await discovery.scan(portStart, portEnd);
+      const result = await discovery.scan();
       return c.json(result);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

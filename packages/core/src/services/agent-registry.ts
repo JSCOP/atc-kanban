@@ -640,6 +640,41 @@ export class AgentRegistry {
   }
 
   /**
+   * Reconnect an existing OpenCode agent to a new server URL.
+   * Used when an OpenCode instance restarts on a different port.
+   */
+  async reconnectOpenCodeAgent(
+    agentId: string,
+    serverUrl: string,
+    opts?: { cwd?: string; processId?: number },
+  ): Promise<Agent> {
+    const agent = this.getById(agentId);
+    const now = new Date().toISOString();
+    const setData: Record<string, unknown> = {
+      serverUrl,
+      status: 'active',
+      lastHeartbeat: now,
+    };
+    if (opts?.cwd) setData.cwd = opts.cwd;
+    if (opts?.processId) setData.processId = opts.processId;
+
+    this.db.update(agents).set(setData).where(eq(agents.id, agentId)).run();
+
+    await this.eventBus.publish('AGENT_CONNECTED', {
+      agentId,
+      payload: {
+        name: agent.name,
+        connectionType: 'opencode',
+        reconnected: true,
+        previousServerUrl: agent.serverUrl,
+        newServerUrl: serverUrl,
+      },
+    });
+
+    return this.getById(agentId);
+  }
+
+  /**
    * Rename an agent.
    */
   async renameAgent(agentId: string, newName: string): Promise<Agent> {

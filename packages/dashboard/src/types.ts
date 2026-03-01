@@ -182,9 +182,13 @@ export interface OpenCodeMessage {
 export interface DiscoveredInstance {
   serverUrl: string;
   port: number;
+  pid: number | null;
   healthy: boolean;
   alreadyRegistered: boolean;
   existingAgentId: string | null;
+  projectDirectory: string | null;
+  sessionCount: number;
+  busySessionCount: number;
 }
 
 export interface DetectedProcess {
@@ -198,7 +202,7 @@ export interface DetectedProcess {
 export interface DiscoveryResult {
   discovered: DiscoveredInstance[];
   processes: DetectedProcess[];
-  scannedRange: [number, number];
+  portsScanned: number;
   duration: number;
 }
 
