@@ -115,14 +115,17 @@ export class OpenCodeDiscovery {
       }
     }
 
-    // Step 6: Backfill CWD for existing agents that have cwd=null
-    const agentsToBackfill = existingAgents.filter((a) => a.cwd === null && a.serverUrl);
+    // Step 6: Backfill CWD and session title for existing agents
+    const agentsToBackfill = existingAgents.filter((a) => (a.cwd === null || a.sessionTitle === null) && a.serverUrl);
     if (agentsToBackfill.length > 0) {
       await Promise.allSettled(
         agentsToBackfill.map(async (a) => {
-          const cwd = await this.services.opencodeBridge.fetchCwd(a.serverUrl!);
-          if (cwd) {
-            this.services.agentRegistry.updateCwd(a.id, cwd);
+          const info = await this.services.opencodeBridge.fetchSessionInfo(a.serverUrl!);
+          if (info.cwd || info.sessionTitle) {
+            this.services.agentRegistry.updateSessionInfo(a.id, {
+              ...(info.cwd ? { cwd: info.cwd } : {}),
+              ...(info.sessionTitle !== undefined ? { sessionTitle: info.sessionTitle } : {}),
+            });
           }
         }),
       );

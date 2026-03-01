@@ -63,6 +63,7 @@ export interface Agent {
   processId: number | null;
   cwd: string | null;
   sessionId: string | null;
+  sessionTitle: string | null;
   spawnedPid: number | null;
   workspaceMode: WorkspaceMode;
   projectId: string | null;

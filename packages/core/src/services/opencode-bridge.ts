@@ -169,22 +169,36 @@ export class OpenCodeBridge {
     }
   }
   /**
-   * Fetch the working directory (CWD) from an OpenCode instance.
-   * Calls GET {serverUrl}/session and extracts the `directory` field from the first session.
-   * Returns null if no sessions exist or on any error.
+   * Fetch the working directory (CWD) and current session title from an OpenCode instance.
+   * Calls GET {serverUrl}/session and extracts the `directory` and `title` fields.
+   * Returns nulls if no sessions exist or on any error.
    */
-  async fetchCwd(serverUrl: string): Promise<string | null> {
+  async fetchSessionInfo(serverUrl: string): Promise<{ cwd: string | null; sessionTitle: string | null }> {
     try {
       const res = await fetch(`${serverUrl}/session`, {
         signal: AbortSignal.timeout(5000),
       });
-      if (!res.ok) return null;
-      const sessions = (await res.json()) as Array<{ directory?: string }>;
-      if (sessions.length === 0) return null;
-      return sessions[0].directory ?? null;
+      if (!res.ok) return { cwd: null, sessionTitle: null };
+      const sessions = (await res.json()) as Array<{ directory?: string; title?: string }>;
+      if (sessions.length === 0) return { cwd: null, sessionTitle: null };
+      // Use the most recent session (last in array) for title, first for directory
+      const latestSession = sessions[sessions.length - 1];
+      return {
+        cwd: sessions[0].directory ?? null,
+        sessionTitle: latestSession.title ?? null,
+      };
     } catch {
-      return null;
+      return { cwd: null, sessionTitle: null };
     }
+  }
+
+  /**
+   * Fetch the working directory (CWD) from an OpenCode instance.
+   * @deprecated Use fetchSessionInfo() instead.
+   */
+  async fetchCwd(serverUrl: string): Promise<string | null> {
+    const info = await this.fetchSessionInfo(serverUrl);
+    return info.cwd;
   }
 
   /**

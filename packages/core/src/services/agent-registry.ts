@@ -489,6 +489,20 @@ export class AgentRegistry {
       .run();
   }
   /**
+   * Update the session info (CWD and session title) of an agent.
+   */
+  updateSessionInfo(agentId: string, info: { cwd?: string; sessionTitle?: string | null }): void {
+    const setData: Record<string, unknown> = {};
+    if (info.cwd !== undefined) setData.cwd = info.cwd;
+    if (info.sessionTitle !== undefined) setData.sessionTitle = info.sessionTitle;
+    if (Object.keys(setData).length === 0) return;
+    this.db
+      .update(agents)
+      .set(setData)
+      .where(eq(agents.id, agentId))
+      .run();
+  }
+  /**
    * Check health of a specific OpenCode agent via HTTP.
    */
   async checkOpenCodeHealth(agentId: string): Promise<Agent> {
@@ -609,6 +623,7 @@ export class AgentRegistry {
       processId: row.processId,
       cwd: row.cwd,
       sessionId: row.sessionId ?? null,
+      sessionTitle: row.sessionTitle ?? null,
       spawnedPid: row.spawnedPid ?? null,
       workspaceMode: (row.workspaceMode ?? 'disabled') as WorkspaceMode,
       projectId: row.projectId ?? null,

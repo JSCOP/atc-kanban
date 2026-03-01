@@ -75,7 +75,8 @@ export function initializeDatabase(dbPath?: string): ReturnType<typeof drizzle> 
       session_id      TEXT,
       spawned_pid     INTEGER,
       workspace_mode  TEXT NOT NULL DEFAULT 'disabled' CHECK(workspace_mode IN ('required','disabled')),
-      project_id      TEXT REFERENCES projects(id)
+      project_id      TEXT REFERENCES projects(id),
+      session_title   TEXT
     );
 
     CREATE TABLE IF NOT EXISTS tasks (
@@ -193,6 +194,9 @@ export function initializeDatabase(dbPath?: string): ReturnType<typeof drizzle> 
   }
   if (!agentColNames.has('project_id')) {
     raw.exec('ALTER TABLE agents ADD COLUMN project_id TEXT REFERENCES projects(id)');
+  }
+  if (!agentColNames.has('session_title')) {
+    raw.exec('ALTER TABLE agents ADD COLUMN session_title TEXT');
   }
 
   // ── Project migrations ──────────────────────────────────────────────────────

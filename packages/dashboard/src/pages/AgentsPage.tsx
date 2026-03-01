@@ -172,6 +172,11 @@ function AgentCard({
               </h3>
             </div>
           )}
+          {agent.sessionTitle && (
+            <p className="text-xs text-purple-400 truncate mt-0.5" title={agent.sessionTitle}>
+              {agent.sessionTitle}
+            </p>
+          )}
           <div className="flex items-center gap-2 mt-0.5">
             <span className={`w-1.5 h-1.5 rounded-full ${statusColors[agent.status]}`} />
             <span className={`text-xs ${isActive ? 'text-green-400' : 'text-red-400'}`}>
@@ -251,9 +256,9 @@ function AgentCard({
           </div>
         )}
         {agent.sessionId && (
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1" title={agent.sessionId}>
             <span className="text-gray-500">Session:</span>
-            <span className="text-gray-300 font-mono">{agent.sessionId.slice(0, 8)}</span>
+            <span className="text-gray-300 font-mono">{agent.sessionTitle || agent.sessionId.slice(0, 8)}</span>
             <button
               onClick={() => {
                 navigator.clipboard.writeText(agent.sessionId);

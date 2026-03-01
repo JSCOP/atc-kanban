@@ -41,6 +41,7 @@ export interface Agent {
   processId: number | null;
   cwd: string | null;
   sessionId: string | null;
+  sessionTitle: string | null;
   spawnedPid: number | null;
   currentTaskId: string | null;
   currentTaskTitle: string | null;
