@@ -624,6 +624,9 @@ export function AgentsPage() {
     trackDiscoveredAgent,
     renameAgent,
     updateAgentRole,
+    reloading,
+    reloadAgents,
+    purgeDisconnected,
   } = useAgentStore();
   const { workspaces, fetchWorkspaces } = useWorkspaceStore();
   const [registerLoading, setRegisterLoading] = useState(false);
@@ -737,6 +740,7 @@ export function AgentsPage() {
   // Calculate total counts
   const totalAgents = agents.length;
   const activeAgents = agents.filter((a) => a.status === 'active').length;
+  const disconnectedCount = agents.filter((a) => a.status === 'disconnected').length;
 
   return (
     <div className="space-y-6">
@@ -750,40 +754,58 @@ export function AgentsPage() {
           </h1>
           <p className="text-gray-400 text-sm mt-1">Monitor your agent fleet status</p>
         </div>
-        <button
-          onClick={() => scanForAgents()}
-          disabled={scanning}
-          className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-gray-200 rounded-lg font-medium transition-colors disabled:opacity-50 flex items-center gap-2"
-        >
-          {scanning ? (
-            <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-              <circle
-                className="opacity-25"
-                cx="12"
-                cy="12"
-                r="10"
-                stroke="currentColor"
-                strokeWidth="4"
-                fill="none"
-              />
-              <path
-                className="opacity-75"
-                fill="currentColor"
-                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-              />
-            </svg>
-          ) : (
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-              />
-            </svg>
+        <div className="flex items-center gap-2">
+          {/* Reload button */}
+          <button
+            onClick={() => reloadAgents()}
+            disabled={reloading}
+            className="px-3 py-2 bg-gray-800 hover:bg-gray-700 text-gray-200 rounded-lg font-medium transition-colors disabled:opacity-50 flex items-center gap-2"
+            title="Reload agents (health check + re-discover)"
+          >
+            {reloading ? (
+              <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+              </svg>
+            ) : (
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+            )}
+            {reloading ? 'Reloading...' : 'Reload'}
+          </button>
+          {/* Clean up disconnected agents */}
+          {disconnectedCount > 0 && (
+            <button
+              onClick={() => purgeDisconnected()}
+              className="px-3 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-lg font-medium transition-colors flex items-center gap-2"
+              title={`Remove ${disconnectedCount} disconnected agent${disconnectedCount > 1 ? 's' : ''}`}
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+              Clean Up ({disconnectedCount})
+            </button>
           )}
-          {scanning ? 'Scanning...' : 'Scan for Agents'}
-        </button>
+          {/* Scan for new agents */}
+          <button
+            onClick={() => scanForAgents()}
+            disabled={scanning}
+            className="px-3 py-2 bg-gray-800 hover:bg-gray-700 text-gray-200 rounded-lg font-medium transition-colors disabled:opacity-50 flex items-center gap-2"
+          >
+            {scanning ? (
+              <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+              </svg>
+            ) : (
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+            )}
+            {scanning ? 'Scanning...' : 'Scan'}
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

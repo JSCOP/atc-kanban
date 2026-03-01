@@ -119,6 +119,35 @@ export function createAgentRoutes(
     return c.json({ agent });
   });
 
+  // POST /api/agents/reload - Run health checks + re-discovery + return fresh agent list
+  app.post('/reload', async (c) => {
+    // 1. Health check all active agents (disconnects dead ones)
+    await services.agentRegistry.checkHealth();
+    // 2. Re-run discovery scan if available
+    if (discovery) {
+      try {
+        await discovery.scan(4096, 15000);
+      } catch {
+        // Non-fatal: discovery failure shouldn't block reload
+      }
+    }
+    // 3. Return fresh agent list
+    const agents = services.agentRegistry.listAgents();
+    return c.json({ agents });
+  });
+
+  // DELETE /api/agents/disconnected - Bulk-remove all disconnected agents
+  app.delete('/disconnected', async (c) => {
+    const allAgents = services.agentRegistry.listAgents();
+    const disconnected = allAgents.filter((a) => a.status === 'disconnected');
+    let removed = 0;
+    for (const agent of disconnected) {
+      await services.agentRegistry.removeById(agent.id);
+      removed++;
+    }
+    return c.json({ removed, total: disconnected.length });
+  });
+
   // DELETE /api/agents/:id - Remove an agent entirely (disconnect + delete from DB)
   // If the agent was spawned by us, also kills the opencode process.
   // Manually registered agents are only unregistered (their process is NOT killed).

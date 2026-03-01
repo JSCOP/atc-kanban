@@ -24,6 +24,10 @@ interface AgentState {
   trackDiscoveredAgent: (serverUrl: string, name?: string) => Promise<void>;
   renameAgent: (agentId: string, newName: string) => Promise<void>;
   updateAgentRole: (agentId: string, role: 'main' | 'worker') => Promise<void>;
+  // Reload & cleanup
+  reloading: boolean;
+  reloadAgents: () => Promise<void>;
+  purgeDisconnected: () => Promise<number>;
 }
 
 export const useAgentStore = create<AgentState>((set, get) => ({
@@ -154,5 +158,33 @@ export const useAgentStore = create<AgentState>((set, get) => ({
         role === 'main' && a.role === 'main' ? { ...a, role: 'worker' as const } : a
       )),
     }));
+  },
+
+  reloading: false,
+
+  reloadAgents: async () => {
+    set({ reloading: true, error: null });
+    try {
+      const agents = await apiClient.reloadAgents();
+      set({ agents, reloading: false });
+    } catch (err) {
+      set({ error: err instanceof Error ? err.message : 'Failed to reload agents', reloading: false });
+    }
+  },
+
+  purgeDisconnected: async () => {
+    try {
+      const { removed } = await apiClient.purgeDisconnectedAgents();
+      if (removed > 0) {
+        // Remove disconnected agents from local state
+        set((state) => ({
+          agents: state.agents.filter((a) => a.status !== 'disconnected'),
+        }));
+      }
+      return removed;
+    } catch (err) {
+      set({ error: err instanceof Error ? err.message : 'Failed to purge agents' });
+      return 0;
+    }
   },
 }));

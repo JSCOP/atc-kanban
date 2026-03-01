@@ -79,6 +79,14 @@ export const api = {
     const res = await fetchApi<{ agents: Agent[] }>('/agents');
     return res.agents;
   },
+  reloadAgents: async () => {
+    const res = await fetchApi<{ agents: Agent[] }>('/agents/reload', { method: 'POST' });
+    return res.agents;
+  },
+  purgeDisconnectedAgents: async () => {
+    const res = await fetchApi<{ removed: number; total: number }>('/agents/disconnected', { method: 'DELETE' });
+    return res;
+  },
   disconnectAgent: (id: string) => fetchApi<{ ok: boolean }>(`/agents/${id}`, { method: 'DELETE' }),
   renameAgent: async (id: string, name: string) => {
     const res = await fetchApi<{ agent: Agent }>(`/agents/${id}`, {
