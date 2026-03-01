@@ -491,9 +491,10 @@ export class AgentRegistry {
   /**
    * Update the session info (CWD and session title) of an agent.
    */
-  updateSessionInfo(agentId: string, info: { cwd?: string; sessionTitle?: string | null }): void {
+  updateSessionInfo(agentId: string, info: { cwd?: string; sessionId?: string | null; sessionTitle?: string | null }): void {
     const setData: Record<string, unknown> = {};
     if (info.cwd !== undefined) setData.cwd = info.cwd;
+    if (info.sessionId !== undefined) setData.sessionId = info.sessionId;
     if (info.sessionTitle !== undefined) setData.sessionTitle = info.sessionTitle;
     if (Object.keys(setData).length === 0) return;
     this.db

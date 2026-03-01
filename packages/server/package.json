@@ -1,6 +1,6 @@
 {
   "name": "atc-kanban",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "description": "Multi-agent task orchestration system with kanban board — MCP server + HTTP dashboard",
   "type": "module",
   "main": "dist/index.js",

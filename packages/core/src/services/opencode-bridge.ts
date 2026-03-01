@@ -206,6 +206,30 @@ export class OpenCodeBridge {
   }
 
   /**
+   * Fetch ALL sessions from an OpenCode instance.
+   * Returns the raw session list for group-based assignment.
+   * Each session has id, title, and directory.
+   */
+  async fetchAllSessions(
+    serverUrl: string,
+  ): Promise<Array<{ id: string; title: string | null; directory: string | null }>> {
+    try {
+      const res = await fetch(`${serverUrl}/session`, {
+        signal: AbortSignal.timeout(5000),
+      });
+      if (!res.ok) return [];
+      const sessions = (await res.json()) as Array<{ id?: string; directory?: string; title?: string }>;
+      return sessions.map((s) => ({
+        id: s.id ?? '',
+        title: s.title ?? null,
+        directory: s.directory ?? null,
+      }));
+    } catch {
+      return [];
+    }
+  }
+
+  /**
    * Fetch the working directory (CWD) from an OpenCode instance.
    * @deprecated Use fetchSessionInfo() instead.
    */

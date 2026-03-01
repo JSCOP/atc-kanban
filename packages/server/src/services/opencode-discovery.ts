@@ -115,19 +115,67 @@ export class OpenCodeDiscovery {
       }
     }
 
-    // Step 6: Refresh CWD and session title for ALL existing agents with a serverUrl.
-    // Always refresh titles — each OpenCode server is independent and may have
-    // different sessions. Previous scans may have set stale/wrong titles.
-    const agentsToRefresh = existingAgents.filter((a) => a.serverUrl);
-    if (agentsToRefresh.length > 0) {
+    // Step 6: Group-based session assignment.
+    // All OpenCode instances sharing the same CWD/project share a single session store.
+    // We fetch the session list ONCE per CWD group, then assign unique sessions to each agent.
+    const agentsWithUrl = existingAgents.filter((a) => a.serverUrl);
+    if (agentsWithUrl.length > 0) {
+      // Group agents by CWD (null CWD agents get their own group keyed by serverUrl)
+      const cwdGroups = new Map<string, typeof agentsWithUrl>();
+      for (const a of agentsWithUrl) {
+        const groupKey = a.cwd ?? `__url__${a.serverUrl}`;
+        const group = cwdGroups.get(groupKey) ?? [];
+        group.push(a);
+        cwdGroups.set(groupKey, group);
+      }
+
       await Promise.allSettled(
-        agentsToRefresh.map(async (a) => {
-          const info = await this.services.opencodeBridge.fetchSessionInfo(a.serverUrl!, a.sessionId);
-          const updates: { cwd?: string; sessionTitle?: string | null } = {};
-          if (info.cwd && info.cwd !== a.cwd) updates.cwd = info.cwd;
-          if (info.sessionTitle !== undefined) updates.sessionTitle = info.sessionTitle;
-          if (Object.keys(updates).length > 0) {
-            this.services.agentRegistry.updateSessionInfo(a.id, updates);
+        [...cwdGroups.values()].map(async (group) => {
+          // Fetch CWD for agents missing it (use first agent's serverUrl)
+          const representative = group[0];
+          const sessions = await this.services.opencodeBridge.fetchAllSessions(representative.serverUrl!);
+
+          // Update CWD for any agents missing it
+          for (const a of group) {
+            if (!a.cwd && sessions.length > 0 && sessions[0].directory) {
+              this.services.agentRegistry.updateSessionInfo(a.id, { cwd: sessions[0].directory });
+              a.cwd = sessions[0].directory;
+            }
+          }
+
+          if (sessions.length === 0) return;
+
+          // Build a set of session IDs already assigned within this group
+          const assignedSessionIds = new Set<string>();
+          for (const a of group) {
+            if (a.sessionId && sessions.some((s) => s.id === a.sessionId)) {
+              assignedSessionIds.add(a.sessionId);
+            }
+          }
+
+          // Assign unassigned sessions to agents that don't have a valid one
+          const unassignedSessions = sessions.filter((s) => s.id && !assignedSessionIds.has(s.id));
+          let nextIdx = 0;
+
+          for (const a of group) {
+            const hasValidSession = a.sessionId && sessions.some((s) => s.id === a.sessionId);
+            if (hasValidSession) {
+              // Agent already has a valid session — just update the title in case it changed
+              const session = sessions.find((s) => s.id === a.sessionId);
+              if (session && session.title !== a.sessionTitle) {
+                this.services.agentRegistry.updateSessionInfo(a.id, {
+                  sessionId: a.sessionId,
+                  sessionTitle: session.title,
+                });
+              }
+            } else if (nextIdx < unassignedSessions.length) {
+              // Assign the next available unassigned session
+              const session = unassignedSessions[nextIdx++];
+              this.services.agentRegistry.updateSessionInfo(a.id, {
+                sessionId: session.id,
+                sessionTitle: session.title,
+              });
+            }
           }
         }),
       );
@@ -378,25 +426,46 @@ export class OpenCodeDiscovery {
    */
   async track(serverUrl: string, name?: string): Promise<{ agentId: string }> {
     const agentName = name || `OpenCode@${new URL(serverUrl).port}`;
-    const info = await this.services.opencodeBridge.fetchSessionInfo(serverUrl);
+    const sessions = await this.services.opencodeBridge.fetchAllSessions(serverUrl);
+    const cwd = sessions.length > 0 ? (sessions[0].directory ?? null) : null;
+
     const agent = await this.services.agentRegistry.registerOpenCodeAgent({
       name: agentName,
       serverUrl,
-      ...(info.cwd ? { cwd: info.cwd } : {}),
+      ...(cwd ? { cwd } : {}),
     });
 
-    // Set session title immediately if available
-    if (info.sessionTitle) {
-      this.services.agentRegistry.updateSessionInfo(agent.id, {
-        sessionTitle: info.sessionTitle,
-      });
+    // Group-aware session assignment: find sessions already used by agents with same CWD
+    if (sessions.length > 0) {
+      const existingAgents = this.services.db
+        .select()
+        .from(schema.agents)
+        .where(eq(schema.agents.connectionType, 'opencode'))
+        .all();
+
+      const sameGroupAgents = existingAgents.filter(
+        (a) => a.id !== agent.id && a.cwd === cwd,
+      );
+      const assignedSessionIds = new Set(
+        sameGroupAgents
+          .filter((a) => a.sessionId && sessions.some((s) => s.id === a.sessionId))
+          .map((a) => a.sessionId!),
+      );
+
+      const unassigned = sessions.find((s) => s.id && !assignedSessionIds.has(s.id));
+      if (unassigned) {
+        this.services.agentRegistry.updateSessionInfo(agent.id, {
+          sessionId: unassigned.id,
+          sessionTitle: unassigned.title,
+        });
+      }
     }
 
     // Auto-register workspace from agent's CWD if it's a git repo
-    if (info.cwd) {
+    if (cwd) {
       try {
         await this.services.workspaceService.createWorkspace({
-          repoRoot: info.cwd,
+          repoRoot: cwd,
           baseBranch: 'main',
         });
       } catch {
