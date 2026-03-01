@@ -67,6 +67,9 @@ export function useWebSocket() {
         case 'workspace:deleted':
           workspaceStore.removeWorkspace(message.workspaceId);
           break;
+        case 'workspace:updated':
+          workspaceStore.updateWorkspace(message.workspace);
+          break;
       }
     });
 

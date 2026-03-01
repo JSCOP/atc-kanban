@@ -48,9 +48,9 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   deleteWorkspaceApi: async (workspaceId: string) => {
     try {
       await apiClient.deleteWorkspace(workspaceId);
-      set((state) => ({
-        workspaces: state.workspaces.filter((w) => w.id !== workspaceId),
-      }));
+      // Re-fetch to get updated status (soft-delete sets status to 'deleted')
+      const workspaces = await apiClient.getWorkspaces();
+      set({ workspaces });
     } catch (err) {
       console.error('Failed to delete workspace:', err);
       throw err;

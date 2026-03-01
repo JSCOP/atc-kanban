@@ -157,7 +157,8 @@ export type WebSocketMessage =
   | { type: 'project:created'; project: Project }
   | { type: 'project:deleted'; projectId: string }
   | { type: 'workspace:created'; workspace: Workspace }
-  | { type: 'workspace:deleted'; workspaceId: string };
+  | { type: 'workspace:deleted'; workspaceId: string }
+  | { type: 'workspace:updated'; workspace: Workspace };
 
 // ── OpenCode Session Message Types ───────────────────────────────────────────
 

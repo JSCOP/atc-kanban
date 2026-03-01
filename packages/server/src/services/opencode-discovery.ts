@@ -120,7 +120,7 @@ export class OpenCodeDiscovery {
     if (agentsToBackfill.length > 0) {
       await Promise.allSettled(
         agentsToBackfill.map(async (a) => {
-          const info = await this.services.opencodeBridge.fetchSessionInfo(a.serverUrl!);
+          const info = await this.services.opencodeBridge.fetchSessionInfo(a.serverUrl!, a.sessionId);
           if (info.cwd || info.sessionTitle) {
             this.services.agentRegistry.updateSessionInfo(a.id, {
               ...(info.cwd ? { cwd: info.cwd } : {}),

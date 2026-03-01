@@ -28,10 +28,9 @@ export function SettingsPage() {
     Promise.all([
       fetch('/api/health').then((r) => r.json()),
       api.getBoardSummary(),
-      api.getWorkspaces(),
       api.getServerInfo().catch(() => null),
     ])
-      .then(([h, s, w, info]) => {
+      .then(([h, s, info]) => {
         setHealth(h);
         setSummary(s);
         workspaceStore.fetchWorkspaces();
