@@ -211,6 +211,13 @@ export const api = {
   },
   archiveWorkspace: (id: string) => fetchApi<{ ok: boolean }>(`/workspaces/${id}/archive`, { method: 'POST' }),
   deleteWorkspace: (id: string) => fetchApi<{ ok: boolean }>(`/workspaces/${id}`, { method: 'DELETE' }),
+  createWorkspace: async (repoRoot: string, baseBranch = 'main') => {
+    const res = await fetchApi<{ workspace: Workspace }>('/workspaces', {
+      method: 'POST',
+      body: JSON.stringify({ repoRoot, baseBranch }),
+    });
+    return res.workspace;
+  },
 
   // Dispatch
   dispatchTask: async (input: DispatchTaskInput) => {

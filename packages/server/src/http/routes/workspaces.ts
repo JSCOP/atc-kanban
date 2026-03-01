@@ -15,6 +15,17 @@ export function createWorkspaceRoutes(services: ATCServices) {
     return c.json({ workspaces });
   });
 
+  // POST /api/workspaces - Register a new workspace
+  app.post('/', async (c) => {
+    const body = await c.req.json();
+    const workspace = await services.workspaceService.createWorkspace({
+      repoRoot: body.repoRoot,
+      baseBranch: body.baseBranch || 'main',
+    });
+    return c.json({ workspace }, 201);
+  });
+
+
   // GET /api/workspaces/by-task/:taskId - Find workspace by task ID
   app.get('/by-task/:taskId', (c) => {
     const workspace = services.workspaceService.findByTaskId(c.req.param('taskId'));

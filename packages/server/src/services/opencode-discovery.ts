@@ -115,17 +115,19 @@ export class OpenCodeDiscovery {
       }
     }
 
-    // Step 6: Backfill CWD and session title for existing agents
-    const agentsToBackfill = existingAgents.filter((a) => (a.cwd === null || a.sessionTitle === null) && a.serverUrl);
-    if (agentsToBackfill.length > 0) {
+    // Step 6: Refresh CWD and session title for ALL existing agents with a serverUrl.
+    // Always refresh titles — each OpenCode server is independent and may have
+    // different sessions. Previous scans may have set stale/wrong titles.
+    const agentsToRefresh = existingAgents.filter((a) => a.serverUrl);
+    if (agentsToRefresh.length > 0) {
       await Promise.allSettled(
-        agentsToBackfill.map(async (a) => {
+        agentsToRefresh.map(async (a) => {
           const info = await this.services.opencodeBridge.fetchSessionInfo(a.serverUrl!, a.sessionId);
-          if (info.cwd || info.sessionTitle) {
-            this.services.agentRegistry.updateSessionInfo(a.id, {
-              ...(info.cwd ? { cwd: info.cwd } : {}),
-              ...(info.sessionTitle !== undefined ? { sessionTitle: info.sessionTitle } : {}),
-            });
+          const updates: { cwd?: string; sessionTitle?: string | null } = {};
+          if (info.cwd && info.cwd !== a.cwd) updates.cwd = info.cwd;
+          if (info.sessionTitle !== undefined) updates.sessionTitle = info.sessionTitle;
+          if (Object.keys(updates).length > 0) {
+            this.services.agentRegistry.updateSessionInfo(a.id, updates);
           }
         }),
       );
@@ -376,12 +378,33 @@ export class OpenCodeDiscovery {
    */
   async track(serverUrl: string, name?: string): Promise<{ agentId: string }> {
     const agentName = name || `OpenCode@${new URL(serverUrl).port}`;
-    const cwd = await this.services.opencodeBridge.fetchCwd(serverUrl);
+    const info = await this.services.opencodeBridge.fetchSessionInfo(serverUrl);
     const agent = await this.services.agentRegistry.registerOpenCodeAgent({
       name: agentName,
       serverUrl,
-      ...(cwd ? { cwd } : {}),
+      ...(info.cwd ? { cwd: info.cwd } : {}),
     });
+
+    // Set session title immediately if available
+    if (info.sessionTitle) {
+      this.services.agentRegistry.updateSessionInfo(agent.id, {
+        sessionTitle: info.sessionTitle,
+      });
+    }
+
+    // Auto-register workspace from agent's CWD if it's a git repo
+    if (info.cwd) {
+      try {
+        await this.services.workspaceService.createWorkspace({
+          repoRoot: info.cwd,
+          baseBranch: 'main',
+        });
+      } catch {
+        // Workspace may already exist — ignore duplicate errors
+      }
+    }
+
     return { agentId: agent.id };
   }
 }
+

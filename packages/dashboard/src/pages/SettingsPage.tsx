@@ -23,6 +23,9 @@ export function SettingsPage() {
   const [actionLoading, setActionLoading] = useState<'shutdown' | 'restart' | null>(null);
   const [actionResult, setActionResult] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [workspaceActionLoading, setWorkspaceActionLoading] = useState<string | null>(null);
+  const [showAddWorkspace, setShowAddWorkspace] = useState(false);
+  const [newWorkspacePath, setNewWorkspacePath] = useState('');
+  const [addingWorkspace, setAddingWorkspace] = useState(false);
 
   const loadData = useCallback(() => {
     Promise.all([
@@ -120,6 +123,20 @@ export function SettingsPage() {
       // Error already logged in store
     } finally {
       setWorkspaceActionLoading(null);
+    }
+  };
+
+  const handleAddWorkspace = async () => {
+    if (!newWorkspacePath.trim()) return;
+    setAddingWorkspace(true);
+    try {
+      await workspaceStore.createWorkspaceApi(newWorkspacePath.trim());
+      setNewWorkspacePath('');
+      setShowAddWorkspace(false);
+    } catch {
+      // Error logged in store
+    } finally {
+      setAddingWorkspace(false);
     }
   };
 
@@ -287,7 +304,15 @@ export function SettingsPage() {
       {/* Workspaces */}
       <div className="bg-gray-800 rounded-lg p-5 space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide">Workspaces</h2>
+          <div className="flex items-center gap-3">
+            <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide">Workspaces</h2>
+            <button
+              onClick={() => setShowAddWorkspace(!showAddWorkspace)}
+              className="px-2 py-0.5 text-[11px] font-medium bg-blue-600 hover:bg-blue-500 text-white rounded transition-colors cursor-pointer"
+            >
+              {showAddWorkspace ? 'Cancel' : '+ Add'}
+            </button>
+          </div>
           {/* Filter Tabs */}
           <div className="flex flex-wrap gap-1">
             {filterTabs.map((tab) => (
@@ -305,6 +330,27 @@ export function SettingsPage() {
             ))}
           </div>
         </div>
+
+        {showAddWorkspace && (
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              value={newWorkspacePath}
+              onChange={(e) => setNewWorkspacePath(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleAddWorkspace()}
+              placeholder="Git repository path (e.g. E:/Projects/my-repo)"
+              className="flex-1 px-3 py-1.5 text-sm bg-gray-900 border border-gray-700 rounded-lg text-gray-200 placeholder-gray-500 focus:outline-none focus:border-blue-500"
+              disabled={addingWorkspace}
+            />
+            <button
+              onClick={handleAddWorkspace}
+              disabled={addingWorkspace || !newWorkspacePath.trim()}
+              className="px-3 py-1.5 text-xs font-medium bg-green-600 hover:bg-green-500 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
+            >
+              {addingWorkspace ? 'Adding...' : 'Register'}
+            </button>
+          </div>
+        )}
 
         {filteredWorkspaces.length === 0 ? (
           <p className="text-sm text-gray-500">

@@ -11,6 +11,7 @@ interface WorkspaceState {
   removeWorkspace: (workspaceId: string) => void;
   deleteWorkspaceApi: (workspaceId: string) => Promise<void>;
   archiveWorkspaceApi: (workspaceId: string) => Promise<void>;
+  createWorkspaceApi: (repoRoot: string, baseBranch?: string) => Promise<void>;
 }
 
 export const useWorkspaceStore = create<WorkspaceState>((set) => ({
@@ -65,6 +66,17 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
       set({ workspaces });
     } catch (err) {
       console.error('Failed to archive workspace:', err);
+      throw err;
+    }
+  },
+
+  createWorkspaceApi: async (repoRoot: string, baseBranch?: string) => {
+    try {
+      await apiClient.createWorkspace(repoRoot, baseBranch);
+      const workspaces = await apiClient.getWorkspaces();
+      set({ workspaces });
+    } catch (err) {
+      console.error('Failed to create workspace:', err);
       throw err;
     }
   },
