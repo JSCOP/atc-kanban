@@ -66,6 +66,7 @@ function AgentCard({
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState(agent.name);
   const [copied, setCopied] = useState(false);
+  const [copiedSession, setCopiedSession] = useState(false);
 
   return (
     <div className="bg-gray-900 border border-gray-800 rounded-lg p-4 hover:border-gray-700 transition-colors">
@@ -232,6 +233,57 @@ function AgentCard({
         </div>
       </div>
 
+      {/* Metadata Section */}
+      <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] mb-3">
+        {agent.cwd && (
+          <div className="flex items-center gap-1" title={agent.cwd}>
+            <svg className="w-3 h-3 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+            </svg>
+            <span className="text-gray-500">CWD:</span>
+            <span className="text-gray-300 font-medium">{getFolderName(agent.cwd)}</span>
+          </div>
+        )}
+        {agent.processId && (
+          <div className="flex items-center gap-1">
+            <span className="text-gray-500">PID:</span>
+            <span className="text-gray-300 font-mono">{agent.processId}</span>
+          </div>
+        )}
+        {agent.sessionId && (
+          <div className="flex items-center gap-1">
+            <span className="text-gray-500">Session:</span>
+            <span className="text-gray-300 font-mono">{agent.sessionId.slice(0, 8)}</span>
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(agent.sessionId);
+                setCopiedSession(true);
+                setTimeout(() => setCopiedSession(false), 2000);
+              }}
+              className="text-gray-500 hover:text-gray-300 transition-colors"
+              title="Copy Session ID"
+            >
+              {copiedSession ? (
+                <svg className="w-3 h-3 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+              ) : (
+                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                </svg>
+              )}
+            </button>
+          </div>
+        )}
+        <div className="flex items-center gap-1">
+          <span className="text-gray-500">Uptime:</span>
+          <span className="text-gray-300">{formatDuration(agent.connectedAt)}</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <span className="text-gray-500">Heartbeat:</span>
+          <span className="text-gray-300">{formatDuration(agent.lastHeartbeat)}</span>
+        </div>
+      </div>
       {/* Current Task */}
       {agent.currentTaskId && (
         <div className="mb-3 p-2 bg-gray-800/50 rounded text-xs">
