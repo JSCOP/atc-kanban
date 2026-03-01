@@ -58,24 +58,6 @@ export class ProjectService {
     if (input.repoRoot) {
       normalizedRepoRoot = this.validateAndNormalizeRepoRoot(input.repoRoot);
       this.checkRepoRootUniqueness(normalizedRepoRoot);
-
-      // Auto-create base workspace if WorkspaceService is available
-      if (this.workspaceService) {
-        const existing = this.workspaceService.ensureActiveBaseWorkspace(normalizedRepoRoot);
-        if (!existing) {
-          // No base workspace exists — create one
-          // Note: createWorkspace is async but we call it fire-and-forget here
-          // because the workspace is not strictly required for project creation
-          this.workspaceService
-            .createWorkspace({
-              repoRoot: normalizedRepoRoot,
-              baseBranch: baseBranch ?? 'main',
-            })
-            .catch(() => {
-              // Non-fatal: workspace creation failure doesn't block project creation
-            });
-        }
-      }
     }
 
     const id = uuidv4();
@@ -121,21 +103,6 @@ export class ProjectService {
         const normalizedRepoRoot = this.validateAndNormalizeRepoRoot(input.repoRoot);
         this.checkRepoRootUniqueness(normalizedRepoRoot, id);
         updateData.repoRoot = normalizedRepoRoot;
-
-        // Auto-create base workspace
-        if (this.workspaceService) {
-          const existing = this.workspaceService.ensureActiveBaseWorkspace(normalizedRepoRoot);
-          if (!existing) {
-            this.workspaceService
-              .createWorkspace({
-                repoRoot: normalizedRepoRoot,
-                baseBranch: input.baseBranch ?? 'main',
-              })
-              .catch(() => {
-                // Non-fatal
-              });
-          }
-        }
       } else {
         // Allow clearing repoRoot by passing empty string
         updateData.repoRoot = null;

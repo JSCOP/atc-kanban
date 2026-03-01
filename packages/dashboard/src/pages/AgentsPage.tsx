@@ -533,6 +533,7 @@ interface CollapsibleSectionProps {
   onToggle: () => void;
   children: React.ReactNode;
   defaultExpanded?: boolean;
+  onDelete?: () => void;
 }
 
 function CollapsibleSection({
@@ -545,60 +546,79 @@ function CollapsibleSection({
   expanded,
   onToggle,
   children,
+  onDelete,
 }: CollapsibleSectionProps) {
   return (
     <div className="border border-gray-800 rounded-xl overflow-hidden bg-gray-900/30">
-      <button
-        onClick={onToggle}
-        className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-800/50 transition-colors text-left"
-      >
-        <svg
-          className={`w-4 h-4 text-gray-500 transition-transform duration-200 ${expanded ? 'rotate-90' : ''}`}
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
+      <div className="flex items-center">
+        <button
+          onClick={onToggle}
+          className="flex-1 flex items-center gap-3 px-4 py-3 hover:bg-gray-800/50 transition-colors text-left"
         >
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-        </svg>
-        {icon}
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="font-medium text-white text-sm">{title}</span>
-            {subtitle && (
-              <span className="text-xs text-gray-500 truncate hidden sm:inline" title={subtitle}>
-                {subtitle}
-              </span>
-            )}
+          <svg
+            className={`w-4 h-4 text-gray-500 transition-transform duration-200 ${expanded ? 'rotate-90' : ''}`}
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+          </svg>
+          {icon}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="font-medium text-white text-sm">{title}</span>
+              {subtitle && (
+                <span className="text-xs text-gray-500 truncate hidden sm:inline" title={subtitle}>
+                  {subtitle}
+                </span>
+              )}
+            </div>
           </div>
-        </div>
-        <div className="flex items-center gap-3">
-          {/* Status dots summary */}
-          <div className="flex items-center gap-1">
-            {activeCount > 0 && (
-              <>
-                {Array.from({ length: Math.min(activeCount, 5) }).map((_, i) => (
-                  <div key={`active-${i}`} className="w-1.5 h-1.5 rounded-full bg-green-500" />
-                ))}
-                {activeCount > 5 && <span className="text-[10px] text-green-500 ml-0.5">+</span>}
-              </>
-            )}
-            {count - activeCount > 0 && (
-              <>
-                {Array.from({ length: Math.min(count - activeCount, 3) }).map((_, i) => (
-                  <div key={`inactive-${i}`} className="w-1.5 h-1.5 rounded-full bg-red-500" />
-                ))}
-                {count - activeCount > 3 && (
-                  <span className="text-[10px] text-red-500 ml-0.5">+</span>
-                )}
-              </>
-            )}
+          <div className="flex items-center gap-3">
+            {/* Status dots summary */}
+            <div className="flex items-center gap-1">
+              {activeCount > 0 && (
+                <>
+                  {Array.from({ length: Math.min(activeCount, 5) }).map((_, i) => (
+                    <div key={`active-${i}`} className="w-1.5 h-1.5 rounded-full bg-green-500" />
+                  ))}
+                  {activeCount > 5 && <span className="text-[10px] text-green-500 ml-0.5">+</span>}
+                </>
+              )}
+              {count - activeCount > 0 && (
+                <>
+                  {Array.from({ length: Math.min(count - activeCount, 3) }).map((_, i) => (
+                    <div key={`inactive-${i}`} className="w-1.5 h-1.5 rounded-full bg-red-500" />
+                  ))}
+                  {count - activeCount > 3 && (
+                    <span className="text-[10px] text-red-500 ml-0.5">+</span>
+                  )}
+                </>
+              )}
+            </div>
+            {/* Count badge */}
+            <span className="text-xs px-2 py-0.5 rounded-full bg-gray-800 text-gray-400">
+              {count}
+            </span>
           </div>
-          {/* Count badge */}
-          <span className="text-xs px-2 py-0.5 rounded-full bg-gray-800 text-gray-400">
-            {count}
-          </span>
-        </div>
-      </button>
+        </button>
+        {onDelete && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              if (window.confirm(`Delete workspace "${title}"? This will soft-delete the workspace and archive associated worktrees.`)) {
+                onDelete();
+              }
+            }}
+            className="px-3 py-3 text-gray-500 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+            title="Delete workspace"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+          </button>
+        )}
+      </div>
       <div
         className={`overflow-hidden transition-all duration-200 ease-in-out ${expanded ? 'max-h-[2000px] opacity-100' : 'max-h-0 opacity-0'}`}
       >
@@ -625,7 +645,7 @@ export function AgentsPage() {
     renameAgent,
     updateAgentRole,
   } = useAgentStore();
-  const { workspaces, fetchWorkspaces } = useWorkspaceStore();
+  const { workspaces, fetchWorkspaces, deleteWorkspaceApi } = useWorkspaceStore();
   const [registerLoading, setRegisterLoading] = useState(false);
   const [spawnLoading, setSpawnLoading] = useState(false);
   const [selectedChatAgentId, setSelectedChatAgentId] = useState<string | null>(null);
@@ -845,6 +865,10 @@ export function AgentsPage() {
                   activeCount={activeCount}
                   expanded={expandedGroups.has(groupId)}
                   onToggle={() => toggleGroup(groupId)}
+                  onDelete={(() => {
+                    const ws = workspaces.find((w) => w.repoRoot === repoRoot && w.status === 'active');
+                    return ws ? () => deleteWorkspaceApi(ws.id) : undefined;
+                  })()}
                 >
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
                     {groupAgents.map((agent) => (
