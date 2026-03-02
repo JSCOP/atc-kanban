@@ -640,20 +640,24 @@ export class OpenCodeBridge {
       }
 
       try {
-        // Send the prompt asynchronously (don't wait for AI response)
-        const promptRes = await fetch(`${agent.serverUrl}/session/${sessionIdToUse}/prompt_async`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(messageBody),
-          signal: AbortSignal.timeout(10000),
-        });
+        // Strategy 1: TUI dispatch — message appears in TUI with real-time streaming
+        const tuiSuccess = await this.trySendViaTui(agent.serverUrl!, prompt);
+        if (!tuiSuccess) {
+          // Strategy 2: prompt_async fallback — headless serve mode only
+          const promptRes = await fetch(`${agent.serverUrl}/session/${sessionIdToUse}/prompt_async`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(messageBody),
+            signal: AbortSignal.timeout(10000),
+          });
 
-        if (!promptRes.ok) {
-          throw new ATCError(
-            'OPENCODE_PROMPT_ERROR',
-            `Failed to send prompt: ${promptRes.statusText}`,
-            502,
-          );
+          if (!promptRes.ok) {
+            throw new ATCError(
+              'OPENCODE_PROMPT_ERROR',
+              `Failed to send prompt: ${promptRes.statusText}`,
+              502,
+            );
+          }
         }
       } catch (error) {
         await this.lockEngine!.releaseTask(
