@@ -327,8 +327,8 @@ export class OpenCodeBridge {
 
   /**
    * Send a message to a session on an OpenCode agent.
-   * Tries TUI dispatch first (append-prompt + submit-prompt) for real-time visibility,
-   * then falls back to prompt_async if TUI endpoints are unavailable (headless mode).
+   * Uses prompt_async first (session-targeted by ID) for correct delivery regardless of
+   * port↔session mapping. Falls back to TUI dispatch if prompt_async fails.
    */
   async sendMessage(
     agentId: string,
@@ -344,11 +344,22 @@ export class OpenCodeBridge {
     }
 
     try {
-      // Strategy 1: TUI dispatch — message appears in TUI with real-time streaming
-      const tuiSuccess = await this.trySendViaTui(serverUrl, message);
-      if (!tuiSuccess) {
-        // Strategy 2: prompt_async fallback — works for headless serve mode
+      // Strategy 1: prompt_async — session-targeted by ID (primary)
+      // Works correctly even when port↔session mapping is wrong for same-CWD groups.
+      // The session is identified by ID, so any port in the group can process it.
+      // TUI instances viewing this session will see the activity via sync context.
+      try {
         await this.sendViaPromptAsync(serverUrl, sessionId, message, opencodeAgent);
+      } catch {
+        // Strategy 2: TUI dispatch fallback — for when prompt_async is unavailable
+        const tuiSuccess = await this.trySendViaTui(serverUrl, message);
+        if (!tuiSuccess) {
+          throw new ATCError(
+            'OPENCODE_API_ERROR',
+            `Failed to send message to ${serverUrl} (both prompt_async and TUI failed)`,
+            502,
+          );
+        }
       }
 
       // Update agent's sessionId if needed
@@ -372,7 +383,7 @@ export class OpenCodeBridge {
 
   /**
    * Try sending via TUI endpoints (append-prompt + submit-prompt).
-   * This makes the message visible in the OpenCode TUI in real-time.
+   * This is a FALLBACK strategy — sends to whatever session the TUI is currently showing.
    * Returns true if successful, false if TUI endpoints are unavailable.
    */
   private async trySendViaTui(serverUrl: string, message: string): Promise<boolean> {
@@ -408,8 +419,10 @@ export class OpenCodeBridge {
   }
 
   /**
-   * Send via prompt_async — fallback for headless serve instances.
-   * Injects message directly into the session; LLM processes it but may not be visible in TUI.
+   * Send via prompt_async — PRIMARY dispatch strategy.
+   * Targets a specific session by ID, so it works correctly regardless of which
+   * session the TUI is currently displaying. Any port in the same CWD group works.
+   * TUI instances viewing the targeted session will see the activity via sync context.
    */
   private async sendViaPromptAsync(
     serverUrl: string,
@@ -640,18 +653,19 @@ export class OpenCodeBridge {
       }
 
       try {
-        // Strategy 1: TUI dispatch — message appears in TUI with real-time streaming
-        const tuiSuccess = await this.trySendViaTui(agent.serverUrl!, prompt);
-        if (!tuiSuccess) {
-          // Strategy 2: prompt_async fallback — headless serve mode only
-          const promptRes = await fetch(`${agent.serverUrl}/session/${sessionIdToUse}/prompt_async`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(messageBody),
-            signal: AbortSignal.timeout(10000),
-          });
+        // Strategy 1: prompt_async — session-targeted by ID (primary)
+        // Works correctly regardless of port↔session mapping for same-CWD groups.
+        const promptRes = await fetch(`${agent.serverUrl}/session/${sessionIdToUse}/prompt_async`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(messageBody),
+          signal: AbortSignal.timeout(10000),
+        });
 
-          if (!promptRes.ok) {
+        if (!promptRes.ok) {
+          // Strategy 2: TUI dispatch fallback
+          const tuiSuccess = await this.trySendViaTui(agent.serverUrl!, prompt);
+          if (!tuiSuccess) {
             throw new ATCError(
               'OPENCODE_PROMPT_ERROR',
               `Failed to send prompt: ${promptRes.statusText}`,
