@@ -487,86 +487,72 @@ export class AgentRegistry {
   }
 
   /**
-   * Register an OpenCode agent from dashboard UI.
-   * Creates agent with connectionType='opencode' and serverUrl.
+   * Register or reconnect an OpenCode agent.
+   * Matching priority:
+   *   1. sessionTitle — stable human-readable identity (survives port/PID changes)
+   *   2. serverUrl — exact URL match (same port, no restart)
+   *   3. port — same port, different host format
+   *   4. fallback — create new agent
+   *
+   * On reconnect: updates serverUrl, processId, cwd, sessionId, sessionTitle.
+   * Preserves: agent ID, role, task history.
    */
   async registerOpenCodeAgent(input: RegisterOpenCodeAgentInput): Promise<Agent> {
     const now = new Date().toISOString();
 
-    // Check for existing agent with same serverUrl to reconnect
-    const existing = this.db
+    // --- Priority 1: Match by sessionTitle (most stable identifier) ---
+    if (input.sessionTitle) {
+      const byTitle = this.db
+        .select()
+        .from(agents)
+        .where(
+          and(
+            eq(agents.connectionType, 'opencode'),
+            eq(agents.sessionTitle, input.sessionTitle),
+          ),
+        )
+        .all()
+        // Prefer active over disconnected; then most recent
+        .sort((a, b) => {
+          if (a.status === 'active' && b.status !== 'active') return -1;
+          if (a.status !== 'active' && b.status === 'active') return 1;
+          return (b.connectedAt ?? '').localeCompare(a.connectedAt ?? '');
+        })
+        .at(0);
+
+      if (byTitle) {
+        return this.reconnectOpenCodeAgentFromInput(byTitle.id, input, now);
+      }
+    }
+
+    // --- Priority 2: Match by exact serverUrl ---
+    const byUrl = this.db
       .select()
       .from(agents)
       .where(eq(agents.serverUrl, input.serverUrl))
       .get();
 
-    if (existing) {
-      // Reactivate existing agent with same serverUrl
-      const newToken = uuidv4();
-      this.db
-        .update(agents)
-        .set({
-          name: input.name,
-          agentToken: newToken,
-          status: 'active',
-          lastHeartbeat: now,
-          ...(input.cwd ? { cwd: input.cwd } : {}),
-          ...(input.processId != null ? { processId: input.processId } : {}),
-        })
-        .where(eq(agents.id, existing.id))
-        .run();
-
-      await this.eventBus.publish('AGENT_CONNECTED', {
-        agentId: existing.id,
-        payload: { name: input.name, connectionType: 'opencode', reconnected: true },
-      });
-
-      return this.getById(existing.id);
+    if (byUrl) {
+      return this.reconnectOpenCodeAgentFromInput(byUrl.id, input, now);
     }
 
+    // --- Priority 3: Match by port (same port, different URL format) ---
     const inputPort = extractPort(input.serverUrl);
-
     if (inputPort !== null) {
-      const agentsWithServerUrl = this.db
+      const allOpenCode = this.db
         .select()
         .from(agents)
+        .where(eq(agents.connectionType, 'opencode'))
         .all()
-        .filter((agent) => agent.serverUrl !== null);
+        .filter((a) => a.serverUrl !== null);
 
-      const byPort = agentsWithServerUrl.find((agent) => {
-        if (!agent.serverUrl) return false;
-        return extractPort(agent.serverUrl) === inputPort;
-      });
-
+      const byPort = allOpenCode.find((a) => extractPort(a.serverUrl!) === inputPort);
       if (byPort) {
-        const newToken = uuidv4();
-        const setData: Record<string, unknown> = {
-          serverUrl: input.serverUrl,
-          agentToken: newToken,
-          status: 'active',
-          lastHeartbeat: now,
-        };
-
-        if (input.name !== undefined) setData.name = input.name;
-        if (input.cwd !== undefined) setData.cwd = input.cwd;
-        if (input.processId != null) setData.processId = input.processId;
-
-        this.db.update(agents).set(setData).where(eq(agents.id, byPort.id)).run();
-
-        await this.eventBus.publish('AGENT_CONNECTED', {
-          agentId: byPort.id,
-          payload: {
-            name: input.name ?? byPort.name,
-            connectionType: 'opencode',
-            reconnected: true,
-          },
-        });
-
-        return this.getById(byPort.id);
+        return this.reconnectOpenCodeAgentFromInput(byPort.id, input, now);
       }
     }
 
-    // Create new OpenCode agent
+    // --- Fallback: Create new OpenCode agent ---
     const agentId = uuidv4();
     const agentToken = uuidv4();
 
@@ -585,6 +571,8 @@ export class AgentRegistry {
         lastHeartbeat: now,
         cwd: input.cwd ?? null,
         processId: input.processId ?? null,
+        sessionTitle: input.sessionTitle ?? null,
+        sessionId: input.sessionId ?? null,
         workspaceMode: 'disabled',
       })
       .run();
@@ -595,6 +583,44 @@ export class AgentRegistry {
     });
 
     return this.getById(agentId);
+  }
+
+  /**
+   * Reconnect an existing OpenCode agent with fresh connection data.
+   * Preserves agent ID and role. Updates all volatile fields.
+   */
+  private async reconnectOpenCodeAgentFromInput(
+    agentId: string,
+    input: RegisterOpenCodeAgentInput,
+    now: string,
+  ): Promise<Agent> {
+    const newToken = uuidv4();
+    const setData: Record<string, unknown> = {
+      serverUrl: input.serverUrl,
+      agentToken: newToken,
+      status: 'active',
+      lastHeartbeat: now,
+    };
+
+    if (input.name !== undefined) setData.name = input.name;
+    if (input.cwd !== undefined) setData.cwd = input.cwd;
+    if (input.processId != null) setData.processId = input.processId;
+    if (input.sessionTitle !== undefined) setData.sessionTitle = input.sessionTitle;
+    if (input.sessionId !== undefined) setData.sessionId = input.sessionId;
+
+    this.db.update(agents).set(setData).where(eq(agents.id, agentId)).run();
+
+    const agent = this.getById(agentId);
+    await this.eventBus.publish('AGENT_CONNECTED', {
+      agentId,
+      payload: {
+        name: agent.name,
+        connectionType: 'opencode',
+        reconnected: true,
+      },
+    });
+
+    return agent;
   }
 
   /**

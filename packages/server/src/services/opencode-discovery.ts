@@ -305,14 +305,18 @@ export class OpenCodeDiscovery {
                 await this.services.agentRegistry.renameAgent(a.id, title);
               }
 
-              // Title-based role reconnection from historical disconnected agents
+              // Title-based role reconnection — sessionTitle is the primary identity.
+              // Match ANY historical agent with the same title (active or disconnected),
+              // preferring most recently connected. This ensures role persists across restarts.
               if (title) {
                 const historicalMatch = this.services.db
                   .select()
                   .from(schema.agents)
                   .where(eq(schema.agents.sessionTitle, title))
                   .all()
-                  .find((agent) => agent.id !== a.id && agent.status === 'disconnected');
+                  .filter((agent) => agent.id !== a.id)
+                  .sort((x, y) => (y.connectedAt ?? '').localeCompare(x.connectedAt ?? ''))
+                  .at(0);
 
                 if (historicalMatch && currentAgent.role !== historicalMatch.role) {
                   await this.services.agentRegistry.updateRole(
@@ -380,6 +384,7 @@ export class OpenCodeDiscovery {
       id: string;
       serverUrl: string | null;
       sessionId: string | null;
+      sessionTitle: string | null;
       status: string;
       cwd: string | null;
     }>,
@@ -388,11 +393,12 @@ export class OpenCodeDiscovery {
     if (unmatched.length === 0) return;
 
     for (const instance of unmatched) {
-      // Try session ID match: fetch instance sessions and check against agent sessionIds
+      // Fetch instance sessions for matching
       const sessions = await this.services.opencodeBridge.fetchAllSessions(instance.serverUrl);
       const instanceSessionIds = new Set(sessions.map((s) => s.id));
+      const instanceSessionTitles = new Map(sessions.filter((s) => s.title).map((s) => [s.title!, s.id]));
 
-      // Find an existing agent whose sessionId appears in this instance's sessions
+      // --- Priority 1: Session ID match ---
       const sessionMatch = existingAgents.find(
         (a) =>
           a.sessionId &&
@@ -401,7 +407,6 @@ export class OpenCodeDiscovery {
       );
 
       if (sessionMatch) {
-        // Strong match: session ID links this instance to an existing agent
         await this.services.agentRegistry.reconnectOpenCodeAgent(
           sessionMatch.id,
           instance.serverUrl,
@@ -415,7 +420,29 @@ export class OpenCodeDiscovery {
         continue;
       }
 
-      // Try project directory match for disconnected agents only (weakest signal)
+      // --- Priority 2: Session title match (stable identity across restarts) ---
+      const titleMatch = existingAgents.find(
+        (a) =>
+          a.sessionTitle &&
+          instanceSessionTitles.has(a.sessionTitle) &&
+          !this.isAlreadyMatched(a.id, discovered),
+      );
+
+      if (titleMatch) {
+        await this.services.agentRegistry.reconnectOpenCodeAgent(
+          titleMatch.id,
+          instance.serverUrl,
+          {
+            cwd: instance.projectDirectory ?? undefined,
+            processId: instance.pid ?? undefined,
+          },
+        );
+        instance.alreadyRegistered = true;
+        instance.existingAgentId = titleMatch.id;
+        continue;
+      }
+
+      // --- Priority 3: Project directory match (disconnected agents only) ---
       if (instance.projectDirectory) {
         const dirMatch = existingAgents.find(
           (a) =>
@@ -425,7 +452,6 @@ export class OpenCodeDiscovery {
         );
 
         if (dirMatch) {
-          // Weaker match: same project directory + agent was disconnected
           await this.services.agentRegistry.reconnectOpenCodeAgent(
             dirMatch.id,
             instance.serverUrl,
@@ -753,6 +779,8 @@ export class OpenCodeDiscovery {
       serverUrl,
       ...(cwd ? { cwd } : {}),
       ...(pid != null ? { processId: pid } : {}),
+      ...(assignedSession?.title ? { sessionTitle: assignedSession.title } : {}),
+      ...(assignedSession?.id ? { sessionId: assignedSession.id } : {}),
     });
 
     // Store session assignment and sync MCP agent data

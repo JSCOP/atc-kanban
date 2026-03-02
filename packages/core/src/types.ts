@@ -92,6 +92,8 @@ export interface RegisterOpenCodeAgentInput {
   serverUrl: string;
   cwd?: string;
   processId?: number;
+  sessionTitle?: string;
+  sessionId?: string;
 }
 
 export interface RegisterAgentResult {
