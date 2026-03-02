@@ -1,4 +1,9 @@
 ## Current
+- [x] TUI Dispatch for real-time OpenCode visibility (v0.6.1)
+  - Done: `opencode-bridge.ts` `sendMessage()` rewritten with 2-strategy dispatch: TUI endpoints (primary) for real-time streaming, `prompt_async` fallback for headless mode. Published as `atc-kanban@0.6.1`.
+  - Verification: User confirmed TUI dispatch working on port 57828. npm published, git pushed.
+
+## Current
 - [x] Add backend auto-dispatch plumbing for new tasks (core + server)
   - Done: Added `projects.auto_dispatch` schema + pragmatic migration, extended `Project`/`ProjectService` create-update-read mapping (`autoDispatch` boolean), added main MCP `dispatch_task` tool, added `TASK_CREATED` listener in server bootstrap to notify active main with available workers, and wired `autoDispatch` through project POST/PUT routes.
   - Verification: LSP diagnostics clean for 7 changed source files; `pnpm -F @atc/core build && pnpm -F atc-kanban build` passed.

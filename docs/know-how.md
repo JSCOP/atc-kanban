@@ -46,11 +46,15 @@
 
 | Gotcha | Detail |
 |--------|--------|
-| TUI mode has no HTTP | Only `opencode serve` or `opencode --port N` are discoverable |
+| TUI has HTTP server | When `mdns: true`, TUI starts HTTP server on a random port — fully discoverable |
+| TUI dispatch (v0.6.1) | Use `/tui/clear-prompt` → `/tui/append-prompt` → `/tui/submit-prompt` for real-time TUI visibility |
+| `prompt_async` TUI limitation | `prompt_async` processes server-side but TUI doesn't show it (SSE subscription gap) |
+| Headless mode fallback | `opencode serve` has no TUI endpoints — use `prompt_async` instead |
 | Port scan range | Default: 4096 + 14000-14100 for OpenCode discovery |
 | Spawner tracks PIDs | Only spawned processes are killed on DELETE — manually registered agents untouched |
-| Dispatch auto-claims task | `dispatchTask` claims server-side, injects `lock_token`/`task_id`, and releases on prompt send failure |
-
+| Dispatch auto-claims task | `dispatchTask` claims server-side, injects `lock_token`/`task_id`, releases on prompt send failure |
+| `OPENCODE_SERVER_PASSWORD` | Env var only — NOT in `opencode.json` (schema has `additionalProperties: false` on `server` block) |
+| Serve + attach pattern | `opencode serve --port N` + `opencode attach http://127.0.0.1:N` for headless + TUI combo |
 ## Task Status Transitions
 
 ```

@@ -14,7 +14,7 @@
 | GET | `/:id/sessions` | List all sessions |
 | POST | `/:id/sessions` | Create new session |
 | GET | `/:id/sessions/:sid/messages` | Fetch messages from specific session |
-| POST | `/:id/sessions/:sid/messages` | Send message to session |
+| POST | `/:id/sessions/:sid/messages` | Send message to session (TUI dispatch → prompt_async fallback) |
 | GET | `/:id/activity` | Get unified agent activity (`?since&limit`) |
 | PATCH | `/:id` | Rename agent (`{ name }`) |
 | DELETE | `/:id` | Remove agent (kills spawned process) |
@@ -53,7 +53,7 @@
 | POST | `/workspaces/:id/archive` | Archive workspace and prune worktree |
 | POST | `/workspaces/:id/sync` | Rebase workspace branch onto latest base |
 | DELETE | `/workspaces/:id` | Remove worktree and delete workspace record |
-| POST | `/dispatch` | Dispatch + auto-claim task; prompt includes `lock_token` + `task_id` |
+| POST | `/dispatch` | Dispatch + auto-claim task; uses TUI-first strategy for real-time visibility |
 | GET | `/health` | Health check → `{ status: 'ok' }` |
 | POST | `/admin/shutdown` | Graceful shutdown |
 || POST | `/admin/restart` | Restart server process |
@@ -61,6 +61,16 @@
 || GET | `/fs` | List filesystem roots (drives on Windows, / on Unix) |
 || GET | `/fs/browse` | Browse directory (`?path&showHidden=0\|1`) → entries with isGitRepo |
 
+### OpenCode Dispatch (v0.6.1+)
+
+2-strategy dispatch in `opencode-bridge.ts`:
+
+| Strategy | Endpoints | When |
+|----------|-----------|------|
+| TUI (primary) | `/tui/clear-prompt` → `/tui/append-prompt` → `/tui/submit-prompt` | TUI mode — real-time streaming |
+| prompt_async (fallback) | `/session/:id/prompt_async` | Headless `opencode serve` only |
+
+Key OpenCode server endpoints: `GET/POST /session`, `POST /session/:id/prompt_async`, `POST /session/:id/message` (sync), `POST /session/:id/abort`, `GET /event` (SSE), `POST /tui/{clear,append,submit}-prompt`, `POST /tui/show-toast`. Full spec: `GET /doc` (OpenAPI 3.1).
 ## MCP Tools (stdio mode, `--mcp` flag)
 
 ### Common (all agents)

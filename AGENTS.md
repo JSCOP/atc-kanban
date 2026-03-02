@@ -120,7 +120,7 @@ pnpm db:migrate       # Drizzle: apply pending migrations
 - **No CI/CD**: No GitHub Actions, Docker, or deployment configs yet
 - **E2E tests**: Use Playwright MCP browser tools interactively (NOT `.spec.ts` files). Legacy specs in `tests/e2e/` run via `pnpm test:e2e`.
 - **Static serving**: Production mode serves `packages/dashboard/dist/` from the server
-- **OpenCode TUI limitation**: Plain `opencode` (TUI mode) has NO HTTP server — only `opencode serve` or `opencode --port N` are discoverable
+- **OpenCode TUI dispatch**: TUI mode with `mdns: true` HAS an HTTP server. Dispatch uses `/tui/append-prompt` + `/tui/submit-prompt` for real-time visibility. `prompt_async` is fallback for headless `opencode serve` only.
 - **Publish on commit**: Every commit MUST be followed by npm publish. Steps: bump version in `packages/server/package.json` → `pnpm build:publish` → `npm publish` from `packages/server/` → `git push`
 
 ---

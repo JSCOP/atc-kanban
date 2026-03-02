@@ -39,9 +39,10 @@ Default mode (HTTP+WS):        MCP mode (--mcp flag):
 
 1. **Dashboard → Server**: HTTP fetch via `api/client.ts`, WS for real-time events
 2. **AI Agents → Server**: MCP tools (stdio) or OpenCode HTTP bridge
-3. **Server → Core**: `createServices()` container, all DB access through service layer
-4. **Core → DB**: Drizzle ORM queries, raw SQL for migrations via `initializeDatabase()`
-
+3. **Server → OpenCode (TUI dispatch)**: `POST /tui/clear-prompt` → `/tui/append-prompt` → `/tui/submit-prompt` (real-time TUI streaming)
+4. **Server → OpenCode (headless fallback)**: `POST /session/:id/prompt_async` (no TUI visibility)
+5. **Server → Core**: `createServices()` container, all DB access through service layer
+6. **Core → DB**: Drizzle ORM queries, raw SQL for migrations via `initializeDatabase()`
 ## Key Architectural Decisions
 
 | Decision | Rationale |
