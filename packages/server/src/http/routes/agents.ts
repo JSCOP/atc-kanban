@@ -147,6 +147,12 @@ export function createAgentRoutes(
     }
     return c.json({ removed, total: disconnected.length });
   });
+  // POST /api/agents/:id/untrack - Remove agent from DB only (no process termination)
+  app.post('/:id/untrack', async (c) => {
+    const agentId = c.req.param('id');
+    await services.agentRegistry.removeById(agentId);
+    return c.json({ ok: true });
+  });
 
   // DELETE /api/agents/:id - Remove an agent entirely (disconnect + delete from DB)
   // For OpenCode agents: calls /global/dispose to gracefully terminate the process.

@@ -88,6 +88,7 @@ export const api = {
     return res;
   },
   disconnectAgent: (id: string) => fetchApi<{ ok: boolean }>(`/agents/${id}`, { method: 'DELETE' }),
+  untrackAgent: (id: string) => fetchApi<{ ok: boolean }>(`/agents/${id}/untrack`, { method: 'POST' }),
   renameAgent: async (id: string, name: string) => {
     const res = await fetchApi<{ agent: Agent }>(`/agents/${id}`, {
       method: 'PATCH',

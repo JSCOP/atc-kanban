@@ -1,4 +1,7 @@
 ## Current
+- [x] Harden OpenCode discovery session mapping (untitled filtering + MCP dedup + role reconnect)
+  - Done: Updated `packages/server/src/services/opencode-discovery.ts` so `scan()` only assigns titled sessions, merges duplicate discovery agents into MCP agents when `sessionId` matches, and restores role from disconnected historical agents by `sessionTitle`. Updated `track()` to reject tracking when all sessions are untitled and to assign only titled sessions.
+  - Verification: LSP diagnostics clean for `packages/server/src/services/opencode-discovery.ts`; `pnpm -F atc-kanban build` passed.
 - [x] Fix v0.6.1 sendMessage regression + add agent disconnect (v0.6.2)
   - Done: Removed TUI dispatch from `sendMessage()` — now uses `prompt_async` exclusively (reliable on TUI + headless). Added `disposeInstance()` to OpenCodeBridge (`POST /global/dispose`). Enhanced `DELETE /api/agents/:id` to call dispose before removing. Added disconnect button to AgentCard (hover-reveal × with confirm dialog). Published as `atc-kanban@0.6.2`.
   - Verification: LSP diagnostics clean, `pnpm build:publish` passed, npm published.

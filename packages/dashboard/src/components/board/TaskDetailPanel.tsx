@@ -273,6 +273,20 @@ export function TaskDetailPanel({ taskId, onClose, onTaskUpdated }: TaskDetailPa
     }
   };
 
+  const handleQuickMove = async (targetStatus: string) => {
+    if (!task || targetStatus === task.status) return;
+    setAdminMoving(true);
+    try {
+      await api.adminMoveTask(task.id, targetStatus);
+      fetchTask();
+      onTaskUpdated();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Move failed');
+    } finally {
+      setAdminMoving(false);
+    }
+  };
+
   const handleReview = async (verdict: 'approve' | 'reject') => {
     setReviewing(true);
     setError(null);
@@ -538,6 +552,25 @@ export function TaskDetailPanel({ taskId, onClose, onTaskUpdated }: TaskDetailPa
                   </div>
                 </div>
 
+                {/* Quick Status Move */}
+                <div className="mt-4 pt-4 border-t border-gray-700">
+                  <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">Move to</p>
+                  <div className="flex gap-2 flex-wrap">
+                    {['todo', 'locked', 'in_progress', 'review', 'done', 'failed']
+                      .filter((s) => s !== task.status)
+                      .map((s) => (
+                        <button
+                          key={s}
+                          onClick={() => handleQuickMove(s)}
+                          disabled={adminMoving}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors disabled:opacity-50 cursor-pointer ${statusColors[s]} hover:opacity-80`}
+                        >
+                          {s.replace(/_/g, ' ')}
+                        </button>
+                      ))}
+                  </div>
+                </div>
+
                 {task.labels.length > 0 && (
                   <div className="mt-4 pt-4 border-t border-gray-700">
                     <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">Labels</p>
@@ -564,6 +597,65 @@ export function TaskDetailPanel({ taskId, onClose, onTaskUpdated }: TaskDetailPa
                   </div>
                 )}
               </div>
+
+              {/* Review Controls for review status */}
+              {task.status === 'review' && (
+                <div className="bg-gray-800 rounded-lg p-5">
+                  <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">
+                    Review Task
+                  </h2>
+                  <div className="space-y-3">
+                    <textarea
+                      value={reviewComment}
+                      onChange={(e) => setReviewComment(e.target.value)}
+                      placeholder="Add review comment (optional)..."
+                      rows={2}
+                      disabled={reviewing}
+                      className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-gray-200 placeholder-gray-500 focus:outline-none focus:border-blue-500 disabled:opacity-50 resize-none"
+                    />
+                    <div className="flex gap-3">
+                      <button
+                        onClick={() => handleReview('approve')}
+                        disabled={reviewing}
+                        className="px-4 py-2 bg-green-600 hover:bg-green-500 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+                      >
+                        {reviewing ? 'Processing...' : 'Approve'}
+                      </button>
+                      <button
+                        onClick={() => handleReview('reject')}
+                        disabled={reviewing}
+                        className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+                      >
+                        Reject
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Review Comments */}
+              {task.comments.length > 0 && (
+                <div className="bg-gray-800 rounded-lg p-5">
+                  <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">
+                    Review Comments
+                  </h2>
+                  <div className="space-y-3">
+                    {task.comments.map((comment) => (
+                      <div key={comment.id} className="bg-gray-900 rounded p-3">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-xs text-blue-400 font-mono">
+                            {comment.agentId.slice(0, 8)}
+                          </span>
+                          <span className="text-xs text-gray-500">
+                            {timeAgo(comment.createdAt)}
+                          </span>
+                        </div>
+                        <p className="text-gray-300 text-sm">{comment.content}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* Workspace Info */}
               <WorkspaceInfo taskId={task.id} />
@@ -689,64 +781,6 @@ export function TaskDetailPanel({ taskId, onClose, onTaskUpdated }: TaskDetailPa
                 </div>
               )}
 
-              {/* Review Comments */}
-              {task.comments.length > 0 && (
-                <div className="bg-gray-800 rounded-lg p-5">
-                  <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">
-                    Review Comments
-                  </h2>
-                  <div className="space-y-3">
-                    {task.comments.map((comment) => (
-                      <div key={comment.id} className="bg-gray-900 rounded p-3">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="text-xs text-blue-400 font-mono">
-                            {comment.agentId.slice(0, 8)}
-                          </span>
-                          <span className="text-xs text-gray-500">
-                            {timeAgo(comment.createdAt)}
-                          </span>
-                        </div>
-                        <p className="text-gray-300 text-sm">{comment.content}</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Review Controls for review status */}
-              {task.status === 'review' && (
-                <div className="bg-gray-800 rounded-lg p-5">
-                  <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">
-                    Review Task
-                  </h2>
-                  <div className="space-y-3">
-                    <textarea
-                      value={reviewComment}
-                      onChange={(e) => setReviewComment(e.target.value)}
-                      placeholder="Add review comment (optional)..."
-                      rows={2}
-                      disabled={reviewing}
-                      className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-gray-200 placeholder-gray-500 focus:outline-none focus:border-blue-500 disabled:opacity-50 resize-none"
-                    />
-                    <div className="flex gap-3">
-                      <button
-                        onClick={() => handleReview('approve')}
-                        disabled={reviewing}
-                        className="px-4 py-2 bg-green-600 hover:bg-green-500 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
-                      >
-                        {reviewing ? 'Processing...' : 'Approve'}
-                      </button>
-                      <button
-                        onClick={() => handleReview('reject')}
-                        disabled={reviewing}
-                        className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
-                      >
-                        Reject
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
 
               {/* Danger Zone — Admin Override */}
               <div className="bg-red-950/30 border border-red-900/50 rounded-lg p-5">

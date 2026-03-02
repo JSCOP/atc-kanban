@@ -10,6 +10,7 @@ interface AgentState {
   updateAgent: (agent: Agent) => void;
   removeAgent: (agentId: string) => void;
   removeAgentApi: (agentId: string) => Promise<void>;
+  untrackAgent: (agentId: string) => Promise<void>;
   registerOpenCodeAgent: (input: RegisterOpenCodeAgentInput) => Promise<Agent>;
   checkAgentHealth: (agentId: string) => Promise<void>;
   spawnOpenCodeAgent: (input: { name?: string; cwd?: string }) => Promise<{ agentId: string; serverUrl: string; port: number; pid: number }>;
@@ -70,6 +71,16 @@ export const useAgentStore = create<AgentState>((set, get) => ({
       }));
     } catch (err) {
       set({ error: err instanceof Error ? err.message : 'Failed to remove agent' });
+    }
+  },
+  untrackAgent: async (agentId) => {
+    try {
+      await apiClient.untrackAgent(agentId);
+      set((state) => ({
+        agents: state.agents.filter((a) => a.id !== agentId),
+      }));
+    } catch (err) {
+      set({ error: err instanceof Error ? err.message : 'Failed to untrack agent' });
     }
   },
 

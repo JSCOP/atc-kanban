@@ -21,8 +21,8 @@
 | POST | `/spawn` | Spawn new OpenCode server (`{ name, cwd, port }`) |
 | GET | `/spawned` | List spawned processes |
 | POST | `/:id/kill` | Kill spawned OpenCode process |
-| GET | `/discover` | Scan for running OpenCode instances (`?portStart&portEnd`) |
-| POST | `/discover/track` | Register discovered instance (`{ serverUrl, name }`) |
+| GET | `/discover` | Scan for running OpenCode instances (session assignment ignores untitled/default sessions) |
+| POST | `/discover/track` | Register discovered instance (`{ serverUrl, name }`), requires at least one titled session |
 
 ### Tasks (`/api/tasks`)
 

@@ -45,7 +45,8 @@ function getFolderName(path: string): string {
 
 function AgentCard({
   agent,
-  onRemove,
+  onUntrack,
+  onExit,
   onHealthCheck,
   onChat,
   onActivity,
@@ -53,7 +54,8 @@ function AgentCard({
   onRoleChange,
 }: {
   agent: Agent;
-  onRemove: (id: string) => void;
+  onUntrack: (id: string) => void;
+  onExit?: (id: string) => void;
   onHealthCheck?: (id: string) => void;
   onChat?: (id: string) => void;
   onActivity?: (id: string) => void;
@@ -371,13 +373,39 @@ function AgentCard({
             {isMain ? '⬇ Demote' : '⬆ Promote'}
           </button>
         )}
-        <button
-          onClick={() => onRemove(agent.id)}
-          className="text-[10px] px-2 py-1 rounded bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors cursor-pointer"
-          title={isActive ? 'Disconnect' : 'Remove'}
-        >
-          {isActive ? 'Disconnect' : 'Remove'}
-        </button>
+        {!isActive && (
+          <button
+            onClick={() => onUntrack(agent.id)}
+            className="text-[10px] px-2 py-1 rounded bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors cursor-pointer"
+            title="Remove from database"
+          >
+            Delete
+          </button>
+        )}
+        {isActive && (
+          <>
+            <button
+              onClick={() => onUntrack(agent.id)}
+              className="text-[10px] px-2 py-1 rounded bg-gray-600/20 text-gray-400 hover:bg-gray-600/30 transition-colors cursor-pointer"
+              title="Disconnect — remove from dashboard (process keeps running)"
+            >
+              Disconnect
+            </button>
+            {isOpenCode && onExit && (
+              <button
+                onClick={() => {
+                  if (confirm('Exit will terminate the OpenCode process. Continue?')) {
+                    onExit(agent.id);
+                  }
+                }}
+                className="text-[10px] px-2 py-1 rounded bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors cursor-pointer"
+                title="Exit — terminate OpenCode process"
+              >
+                Exit
+              </button>
+            )}
+          </>
+        )}
       </div>
     </div>
   );
@@ -632,6 +660,7 @@ export function AgentsPage() {
     loading,
     fetchAgents,
     removeAgentApi,
+    untrackAgent,
     registerOpenCodeAgent,
     checkAgentHealth,
     spawnOpenCodeAgent,
@@ -724,18 +753,31 @@ export function AgentsPage() {
   const handleRoleChange = async (agentId: string, role: 'main' | 'worker') => {
     await updateAgentRole(agentId, role);
   };
+  const handleUntrack = async (agentId: string) => {
+    await untrackAgent(agentId);
+  };
+
+  const handleExit = async (agentId: string) => {
+    await removeAgentApi(agentId);
+  };
 
   const unregisteredDiscovered = discoveredInstances.filter((d) => !d.alreadyRegistered);
 
   // TUI-only processes: running but no HTTP server (can't be tracked)
   const tuiOnlyProcesses = detectedProcesses.filter((p) => !p.hasHttpServer);
 
+  // Disconnected agents for cleanup section
+  const disconnectedAgents = agents.filter((a) => a.status === 'disconnected');
+
+  // Filter out idle instances (no title, no CWD) from workspace display — these are idle opencode instances
+  const displayAgents = agents.filter((a) => a.sessionTitle || a.cwd || a.status === 'disconnected');
+
   // Group agents by workspace repo → worktree, with CWD fallback
   // Flattened: repoRoot -> agents (removed worktree sub-grouping since CWD fallback makes them equal)
   const agentWorkspaceMap = new Map<string, Agent[]>();
   const unassignedAgents: Agent[] = [];
 
-  for (const agent of agents) {
+  for (const agent of displayAgents) {
     const ws = workspaces.find((w) => w.agentId === agent.id && w.status === 'active');
     if (ws) {
       // Active workspace match → group by repoRoot
@@ -891,7 +933,8 @@ export function AgentsPage() {
                       <AgentCard
                         key={agent.id}
                         agent={agent}
-                        onRemove={removeAgentApi}
+                        onUntrack={handleUntrack}
+                        onExit={handleExit}
                         onHealthCheck={
                           agent.connectionType === 'opencode' ? handleHealthCheck : undefined
                         }
@@ -943,7 +986,8 @@ export function AgentsPage() {
                   <AgentCard
                     key={agent.id}
                     agent={agent}
-                    onRemove={removeAgentApi}
+                    onUntrack={handleUntrack}
+                    onExit={handleExit}
                     onHealthCheck={
                       agent.connectionType === 'opencode' ? handleHealthCheck : undefined
                     }
@@ -1069,6 +1113,88 @@ export function AgentsPage() {
                       {proc.command}
                     </p>
                   </div>
+                ))}
+              </div>
+            </CollapsibleSection>
+          )}
+
+          {/* Disconnected Agents — cleanup section */}
+          {disconnectedAgents.length > 0 && (
+            <CollapsibleSection
+              id="disconnected"
+              title={`Disconnected (${disconnectedAgents.length})`}
+              subtitle="Offline agents in database — clean up as needed"
+              icon={
+                <svg
+                  className="w-5 h-5 text-red-400"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                  />
+                </svg>
+              }
+              count={disconnectedAgents.length}
+              activeCount={0}
+              expanded={expandedGroups.has('disconnected')}
+              onToggle={() => toggleGroup('disconnected')}
+            >
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                {disconnectedAgents.map((agent) => (
+                  <AgentCard
+                    key={agent.id}
+                    agent={agent}
+                    onUntrack={handleUntrack}
+                    onExit={handleExit}
+                    onRename={handleRename}
+                    onActivity={handleActivity}
+                  />
+                ))}
+              </div>
+            </CollapsibleSection>
+          )}
+
+          {/* Disconnected Agents — cleanup section */}
+          {disconnectedAgents.length > 0 && (
+            <CollapsibleSection
+              id="disconnected"
+              title={`Disconnected (${disconnectedAgents.length})`}
+              subtitle="Offline agents in database — clean up as needed"
+              icon={
+                <svg
+                  className="w-5 h-5 text-gray-600"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                  />
+                </svg>
+              }
+              count={disconnectedAgents.length}
+              activeCount={0}
+              expanded={expandedGroups.has('disconnected')}
+              onToggle={() => toggleGroup('disconnected')}
+            >
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                {disconnectedAgents.map((agent) => (
+                  <AgentCard
+                    key={agent.id}
+                    agent={agent}
+                    onUntrack={handleUntrack}
+                    onExit={handleExit}
+                    onRename={handleRename}
+                    onActivity={handleActivity}
+                  />
                 ))}
               </div>
             </CollapsibleSection>

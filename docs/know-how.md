@@ -51,6 +51,7 @@
 | `prompt_async` in TUI | Message enters session, LLM processes it, response streams in TUI naturally (no SSE gap) |
 | Agent disconnect (v0.6.2+) | `DELETE /api/agents/:id` calls `POST /global/dispose` on OpenCode instance before DB removal |
 | `/global/dispose` vs `/instance/dispose` | `/global/dispose` disposes ALL instances + triggers process exit; `/instance/dispose` is single-instance only |
+| Untitled sessions in discovery | `scan()` and `track()` ignore untitled/default sessions; `track()` rejects instances with no titled session |
 | Port scan range | Default: 4096 + 14000-14100 for OpenCode discovery |
 | Spawner tracks PIDs | Only spawned processes are killed on DELETE — manually registered agents untouched |
 | Dispatch auto-claims task | `dispatchTask` claims server-side, injects `lock_token`/`task_id`, releases on prompt send failure |

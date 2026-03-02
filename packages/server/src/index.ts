@@ -86,6 +86,22 @@ async function sendReviewNotification(taskId: string): Promise<void> {
     return;
   }
 
+  // Fetch current sessions to ensure we use an active one
+  const sessions = await services.opencodeBridge.fetchAllSessions(serverUrl);
+  const validSession = sessions.find((s) => s.id === sessionId);
+
+  if (!validSession && sessions.length > 0) {
+    // Stored session is stale — use the latest session with a title
+    const latestSession = [...sessions].reverse().find((s) => s.title);
+    if (latestSession) {
+      sessionId = latestSession.id;
+      // Update agent's session in DB
+      services.agentRegistry.updateSessionInfo(mainAgent.id, {
+        sessionId: latestSession.id,
+        sessionTitle: latestSession.title,
+      });
+    }
+  }
   const task = services.taskService.getTask(taskId);
   const reviewMessage = `[ATC Auto-Review] Task "${task.title}" (${task.id}) has been marked for review. Please review and approve/reject using review_task tool.`;
 
