@@ -327,8 +327,8 @@ export class OpenCodeBridge {
 
   /**
    * Send a message to a session on an OpenCode agent.
-   * Calls POST /session/:sessionId/prompt_async on the OpenCode server.
-   * Returns 204 immediately (async).
+   * First tries TUI dispatch (append-prompt + submit-prompt) for real-time TUI visibility.
+   * Falls back to prompt_async if TUI endpoints are unavailable (headless serve mode).
    */
   async sendMessage(
     agentId: string,
@@ -343,22 +343,12 @@ export class OpenCodeBridge {
       throw new ATCError('NOT_OPENCODE', 'Agent has no serverUrl and no override provided', 400);
     }
 
-    const body: Record<string, unknown> = {
-      parts: [{ type: 'text', text: message }],
-    };
-    if (opencodeAgent) {
-      body.agent = opencodeAgent;
-    }
-
     try {
-      const res = await fetch(`${serverUrl}/session/${sessionId}/prompt_async`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-        signal: AbortSignal.timeout(10000),
-      });
-      if (!res.ok) {
-        throw new ATCError('OPENCODE_API_ERROR', `Failed to send message: ${res.statusText}`, 502);
+      // Strategy 1: TUI dispatch — message appears in TUI with real-time streaming
+      const tuiSuccess = await this.trySendViaTui(serverUrl, message);
+      if (!tuiSuccess) {
+        // Strategy 2: prompt_async fallback — works for headless serve mode
+        await this.sendViaPromptAsync(serverUrl, sessionId, message, opencodeAgent);
       }
 
       // Update agent's sessionId if needed
@@ -377,6 +367,71 @@ export class OpenCodeBridge {
         `Failed to send message to ${serverUrl}: ${(error as Error).message}`,
         502,
       );
+    }
+  }
+
+  /**
+   * Try sending via TUI endpoints (append-prompt + submit-prompt).
+   * This makes the message visible in the OpenCode TUI in real-time.
+   * Returns true if successful, false if TUI endpoints are unavailable.
+   */
+  private async trySendViaTui(serverUrl: string, message: string): Promise<boolean> {
+    try {
+      // Clear any existing prompt text first
+      const clearRes = await fetch(`${serverUrl}/tui/clear-prompt`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(3000),
+      });
+      if (!clearRes.ok) return false;
+
+      // Append the message to the TUI prompt
+      const appendRes = await fetch(`${serverUrl}/tui/append-prompt`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: message }),
+        signal: AbortSignal.timeout(3000),
+      });
+      if (!appendRes.ok) return false;
+
+      // Submit the prompt — this triggers LLM processing with TUI streaming
+      const submitRes = await fetch(`${serverUrl}/tui/submit-prompt`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(3000),
+      });
+      return submitRes.ok;
+    } catch {
+      // TUI endpoints unavailable (headless serve mode) — not an error
+      return false;
+    }
+  }
+
+  /**
+   * Send via prompt_async (fallback for headless serve mode).
+   * Message is processed but not visible in TUI.
+   */
+  private async sendViaPromptAsync(
+    serverUrl: string,
+    sessionId: string,
+    message: string,
+    opencodeAgent?: string,
+  ): Promise<void> {
+    const body: Record<string, unknown> = {
+      parts: [{ type: 'text', text: message }],
+    };
+    if (opencodeAgent) {
+      body.agent = opencodeAgent;
+    }
+
+    const res = await fetch(`${serverUrl}/session/${sessionId}/prompt_async`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!res.ok) {
+      throw new ATCError('OPENCODE_API_ERROR', `Failed to send message: ${res.statusText}`, 502);
     }
   }
 
