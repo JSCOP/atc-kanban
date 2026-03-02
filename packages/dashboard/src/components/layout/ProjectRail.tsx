@@ -71,6 +71,19 @@ function SettingsIcon({ className }: { className?: string }) {
   );
 }
 
+function ApiIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
+      />
+    </svg>
+  );
+}
+
 function PlusIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -83,12 +96,14 @@ const navItems = [
   { path: '/', label: 'Board', icon: BoardIcon },
   { path: '/agents', label: 'Agents', icon: AgentsIcon },
   { path: '/events', label: 'Events', icon: EventsIcon },
+  { path: '/api-tester', label: 'API Tester', icon: ApiIcon },
   { path: '/settings', label: 'Settings', icon: SettingsIcon },
 ];
 
 export function ProjectRail() {
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const { projects, selectedProjectId, selectProject, fetchProjects, deleteProject } = useProjectStore();
+  const { projects, selectedProjectId, selectProject, fetchProjects, deleteProject } =
+    useProjectStore();
 
   useEffect(() => {
     fetchProjects();
@@ -161,7 +176,9 @@ export function ProjectRail() {
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    if (window.confirm(`Delete project "${project.name}"? This cannot be undone.`)) {
+                    if (
+                      window.confirm(`Delete project "${project.name}"? This cannot be undone.`)
+                    ) {
                       deleteProject(project.id);
                     }
                   }}

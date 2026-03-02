@@ -13,6 +13,7 @@ import { createTaskRoutes } from './routes/tasks.js';
 import { createWorkspaceRoutes } from './routes/workspaces.js';
 import { createAdminRoutes } from './routes/admin.js';
 import { createFsRoutes } from './routes/fs.js';
+import { createOpenCodeProxyRoutes } from './routes/opencode-proxy.js';
 
 export function createApp(
   services: ATCServices,
@@ -50,6 +51,7 @@ export function createApp(
   app.route('/api/workspaces', createWorkspaceRoutes(services));
   app.route('/api/dispatch', createDispatchRoutes(services));
   app.route('/api/fs', createFsRoutes());
+  app.route('/api/opencode-proxy', createOpenCodeProxyRoutes());
   if (shutdownFn) {
     app.route('/api/admin', createAdminRoutes(shutdownFn));
   }
