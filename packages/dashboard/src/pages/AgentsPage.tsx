@@ -52,6 +52,7 @@ function AgentCard({
   onActivity,
   onRename,
   onRoleChange,
+  onToast,
 }: {
   agent: Agent;
   onUntrack: (id: string) => void;
@@ -61,6 +62,7 @@ function AgentCard({
   onActivity?: (id: string) => void;
   onRename?: (id: string, newName: string) => void;
   onRoleChange?: (id: string, role: 'main' | 'worker') => void;
+  onToast?: (id: string) => void;
 }) {
   const isMain = agent.role === 'main';
   const isActive = agent.status === 'active';
@@ -198,8 +200,13 @@ function AgentCard({
             >
               {isMain ? 'MAIN' : 'WORKER'}
             </span>
+            {agent.serverUrl && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-700/50 text-zinc-400 font-mono">
+                :{new URL(agent.serverUrl).port}
+              </span>
+            )}
           </div>
-        </div>
+      </div>
       </div>
 
       {/* Info Row: Port, Stats */}
@@ -384,6 +391,17 @@ function AgentCard({
         )}
         {isActive && (
           <>
+            {onToast && (
+              <button
+                onClick={async () => {
+                  await onToast(agent.id);
+                }}
+                className="text-[10px] px-2 py-1 rounded bg-purple-500/10 text-purple-400 hover:bg-purple-500/20 transition-colors cursor-pointer"
+                title={`Send toast to identify TUI — ${agent.serverUrl || 'no URL'}`}
+              >
+                Ping
+              </button>
+            )}
             <button
               onClick={() => onUntrack(agent.id)}
               className="text-[10px] px-2 py-1 rounded bg-gray-600/20 text-gray-400 hover:bg-gray-600/30 transition-colors cursor-pointer"
@@ -674,6 +692,8 @@ export function AgentsPage() {
     reloading,
     reloadAgents,
     purgeDisconnected,
+    toastAgent,
+    toastIdentifyAll,
   } = useAgentStore();
   const { workspaces, fetchWorkspaces } = useWorkspaceStore();
   const [registerLoading, setRegisterLoading] = useState(false);
@@ -758,7 +778,11 @@ export function AgentsPage() {
   };
 
   const handleExit = async (agentId: string) => {
-    await removeAgentApi(agentId);
+    try {
+      await removeAgentApi(agentId);
+    } catch (err) {
+      alert(`Exit failed: ${err instanceof Error ? err.message : 'Unknown error'}. Try using Identify Ports to verify the correct agent.`);
+    }
   };
 
   const unregisteredDiscovered = discoveredInstances.filter((d) => !d.alreadyRegistered);
@@ -833,6 +857,19 @@ export function AgentsPage() {
               </svg>
             )}
             {reloading ? 'Reloading...' : 'Reload'}
+          </button>
+          {/* Identify Ports button */}
+          <button
+            onClick={async () => {
+              const result = await toastIdentifyAll();
+              if (result.results.length === 0) {
+                alert('No active agents to identify');
+              }
+            }}
+            className="text-xs px-3 py-1.5 rounded bg-purple-500/10 text-purple-400 hover:bg-purple-500/20 transition-colors cursor-pointer"
+            title="Send identifying toast to all agent TUIs"
+          >
+            Identify Ports
           </button>
           {/* Clean up disconnected agents */}
           {disconnectedCount > 0 && (
@@ -948,6 +985,7 @@ export function AgentsPage() {
                         onRoleChange={
                           agent.connectionType === 'opencode' ? handleRoleChange : undefined
                         }
+                        onToast={agent.status === 'active' ? toastAgent : undefined}
                       />
                     ))}
                   </div>
@@ -1001,6 +1039,7 @@ export function AgentsPage() {
                     onRoleChange={
                       agent.connectionType === 'opencode' ? handleRoleChange : undefined
                     }
+                    onToast={agent.status === 'active' ? toastAgent : undefined}
                   />
                 ))}
               </div>

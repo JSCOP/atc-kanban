@@ -136,6 +136,35 @@ export function createAgentRoutes(
     return c.json({ agents });
   });
 
+  // POST /api/agents/toast-identify - Send identifying toast to all active agents
+  app.post('/toast-identify', async (c) => {
+    const allAgents = services.agentRegistry.listAgents();
+    const active = allAgents.filter((a) => a.status === 'active' && a.serverUrl);
+    const results: { agentId: string; name: string; port: string; ok: boolean }[] = [];
+    await Promise.allSettled(
+      active.map(async (agent) => {
+        const port = new URL(agent.serverUrl!).port;
+        try {
+          const res = await fetch(`${agent.serverUrl}/tui/show-toast`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              message: `PORT ${port} — ${agent.name} (${agent.role})`,
+              variant: 'error',
+              title: `THIS IS PORT ${port}`,
+              duration: 15000,
+            }),
+            signal: AbortSignal.timeout(3000),
+          });
+          results.push({ agentId: agent.id, name: agent.name, port, ok: res.ok });
+        } catch {
+          results.push({ agentId: agent.id, name: agent.name, port, ok: false });
+        }
+      }),
+    );
+    return c.json({ results });
+  });
+
   // DELETE /api/agents/disconnected - Bulk-remove all disconnected agents
   app.delete('/disconnected', async (c) => {
     const allAgents = services.agentRegistry.listAgents();
@@ -154,31 +183,64 @@ export function createAgentRoutes(
     return c.json({ ok: true });
   });
 
+  // POST /api/agents/:id/toast - Send a toast notification to an agent's TUI
+  app.post('/:id/toast', async (c) => {
+    const agentId = c.req.param('id');
+    const agent = services.agentRegistry.getById(agentId);
+    if (!agent.serverUrl) {
+      return c.json({ error: { code: 'NO_SERVER_URL', message: 'Agent has no serverUrl' } }, 400);
+    }
+    const body = await c.req.json().catch(() => ({}));
+    const message = body.message || `ATC: Agent ${agent.name} on port ${new URL(agent.serverUrl).port}`;
+    const variant = body.variant || 'info';
+    try {
+      const res = await fetch(`${agent.serverUrl}/tui/show-toast`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message, variant, title: body.title || 'ATC', duration: body.duration || 10000 }),
+        signal: AbortSignal.timeout(3000),
+      });
+      return c.json({ ok: res.ok, port: new URL(agent.serverUrl).port });
+    } catch {
+      return c.json({ ok: false, error: 'Toast delivery failed — agent may be unreachable' }, 502);
+    }
+  });
+
   // DELETE /api/agents/:id - Remove an agent entirely (disconnect + delete from DB)
   // For OpenCode agents: calls /global/dispose to gracefully terminate the process.
   // For spawned agents: kills the tracked process.
   // Then removes the agent from the DB.
   app.delete('/:id', async (c) => {
     const agentId = c.req.param('id');
+    let disposed = false;
+    let killed = false;
 
-    // Try to gracefully dispose OpenCode instance first
+    // 1. Try graceful HTTP dispose
     try {
       const agent = services.agentRegistry.getById(agentId);
       if (agent.connectionType === 'opencode' && agent.serverUrl) {
-        await services.opencodeBridge.disposeInstance(agent.serverUrl);
+        disposed = await services.opencodeBridge.disposeInstance(agent.serverUrl);
+      }
+      // 2. If dispose failed and we have a PID, force kill
+      if (!disposed && agent.processId) {
+        try {
+          process.kill(agent.processId, 'SIGTERM');
+          killed = true;
+        } catch {
+          // Process already dead
+        }
       }
     } catch {
-      // Agent may already be gone from DB — continue with cleanup
+      // Agent may already be gone from DB
     }
 
+    // 3. Clean up DB
     if (spawner) {
-      // kill() terminates spawned processes and removes from DB;
-      // for non-spawned agents, it falls through to removeById.
       await spawner.kill(agentId);
     } else {
       await services.agentRegistry.removeById(agentId);
     }
-    return c.json({ ok: true });
+    return c.json({ ok: true, disposed, killed });
   });
 
   // POST /api/agents/spawn - Spawn a new OpenCode server process

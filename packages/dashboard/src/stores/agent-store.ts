@@ -29,7 +29,10 @@ interface AgentState {
   reloading: boolean;
   reloadAgents: () => Promise<void>;
   purgeDisconnected: () => Promise<number>;
+  toastAgent: (agentId: string, message?: string) => Promise<{ ok: boolean; port: string }>;
+  toastIdentifyAll: () => Promise<{ results: { agentId: string; name: string; port: string; ok: boolean }[] }>;
 }
+
 
 export const useAgentStore = create<AgentState>((set, get) => ({
   agents: [],
@@ -196,6 +199,22 @@ export const useAgentStore = create<AgentState>((set, get) => ({
     } catch (err) {
       set({ error: err instanceof Error ? err.message : 'Failed to purge agents' });
       return 0;
+    }
+  },
+  toastAgent: async (agentId, message) => {
+    try {
+      return await apiClient.toastAgent(agentId, message);
+    } catch (err) {
+      set({ error: err instanceof Error ? err.message : 'Failed to toast agent' });
+      return { ok: false, port: '' };
+    }
+  },
+  toastIdentifyAll: async () => {
+    try {
+      return await apiClient.toastIdentifyAll();
+    } catch (err) {
+      set({ error: err instanceof Error ? err.message : 'Failed to identify ports' });
+      return { results: [] };
     }
   },
 }));

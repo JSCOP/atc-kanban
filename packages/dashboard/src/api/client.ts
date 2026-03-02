@@ -89,6 +89,16 @@ export const api = {
   },
   disconnectAgent: (id: string) => fetchApi<{ ok: boolean }>(`/agents/${id}`, { method: 'DELETE' }),
   untrackAgent: (id: string) => fetchApi<{ ok: boolean }>(`/agents/${id}/untrack`, { method: 'POST' }),
+  toastAgent: (id: string, message?: string) =>
+    fetchApi<{ ok: boolean; port: string }>(`/agents/${id}/toast`, {
+      method: 'POST',
+      body: JSON.stringify(message ? { message } : {}),
+    }),
+  toastIdentifyAll: () =>
+    fetchApi<{ results: { agentId: string; name: string; port: string; ok: boolean }[] }>(
+      '/agents/toast-identify',
+      { method: 'POST' },
+    ),
   renameAgent: async (id: string, name: string) => {
     const res = await fetchApi<{ agent: Agent }>(`/agents/${id}`, {
       method: 'PATCH',
