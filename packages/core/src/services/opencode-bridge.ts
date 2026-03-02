@@ -327,8 +327,14 @@ export class OpenCodeBridge {
 
   /**
    * Send a message to a session on an OpenCode agent.
-   * First tries TUI dispatch (append-prompt + submit-prompt) for real-time TUI visibility.
-   * Falls back to prompt_async if TUI endpoints are unavailable (headless serve mode).
+   * Uses prompt_async for guaranteed delivery on both TUI and headless instances.
+   *
+   * v0.6.1 used TUI dispatch (append-prompt + submit-prompt) as the primary method,
+   * but headless `opencode serve` instances return `true` for TUI endpoints without
+   * actually processing them, causing messages to be silently lost.
+   *
+   * prompt_async injects the message directly into the session — the LLM processes it
+   * and responses stream in the TUI naturally. This works reliably on both TUI and headless.
    */
   async sendMessage(
     agentId: string,
@@ -344,12 +350,7 @@ export class OpenCodeBridge {
     }
 
     try {
-      // Strategy 1: TUI dispatch — message appears in TUI with real-time streaming
-      const tuiSuccess = await this.trySendViaTui(serverUrl, message);
-      if (!tuiSuccess) {
-        // Strategy 2: prompt_async fallback — works for headless serve mode
-        await this.sendViaPromptAsync(serverUrl, sessionId, message, opencodeAgent);
-      }
+      await this.sendViaPromptAsync(serverUrl, sessionId, message, opencodeAgent);
 
       // Update agent's sessionId if needed
       if (agent.sessionId !== sessionId) {
@@ -371,45 +372,8 @@ export class OpenCodeBridge {
   }
 
   /**
-   * Try sending via TUI endpoints (append-prompt + submit-prompt).
-   * This makes the message visible in the OpenCode TUI in real-time.
-   * Returns true if successful, false if TUI endpoints are unavailable.
-   */
-  private async trySendViaTui(serverUrl: string, message: string): Promise<boolean> {
-    try {
-      // Clear any existing prompt text first
-      const clearRes = await fetch(`${serverUrl}/tui/clear-prompt`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        signal: AbortSignal.timeout(3000),
-      });
-      if (!clearRes.ok) return false;
-
-      // Append the message to the TUI prompt
-      const appendRes = await fetch(`${serverUrl}/tui/append-prompt`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: message }),
-        signal: AbortSignal.timeout(3000),
-      });
-      if (!appendRes.ok) return false;
-
-      // Submit the prompt — this triggers LLM processing with TUI streaming
-      const submitRes = await fetch(`${serverUrl}/tui/submit-prompt`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        signal: AbortSignal.timeout(3000),
-      });
-      return submitRes.ok;
-    } catch {
-      // TUI endpoints unavailable (headless serve mode) — not an error
-      return false;
-    }
-  }
-
-  /**
-   * Send via prompt_async (fallback for headless serve mode).
-   * Message is processed but not visible in TUI.
+   * Send via prompt_async — reliable delivery on both TUI and headless instances.
+   * Injects message directly into the session; LLM processes and response streams in TUI.
    */
   private async sendViaPromptAsync(
     serverUrl: string,
@@ -432,6 +396,27 @@ export class OpenCodeBridge {
     });
     if (!res.ok) {
       throw new ATCError('OPENCODE_API_ERROR', `Failed to send message: ${res.statusText}`, 502);
+    }
+  }
+
+  /**
+   * Gracefully dispose an OpenCode instance.
+   * Calls POST /global/dispose which cleans up all instances and triggers process exit.
+   * For TUI instances, this triggers the shutdown chain (disposeAll → process.exit).
+   * For headless `opencode serve`, the process exits after the event loop drains.
+   * Returns true if the dispose call succeeded, false if unreachable.
+   */
+  async disposeInstance(serverUrl: string): Promise<boolean> {
+    try {
+      const res = await fetch(`${serverUrl}/global/dispose`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(5000),
+      });
+      return res.ok;
+    } catch {
+      // Instance unreachable — already dead or network issue
+      return false;
     }
   }
 

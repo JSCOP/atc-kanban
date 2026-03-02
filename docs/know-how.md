@@ -46,10 +46,11 @@
 
 | Gotcha | Detail |
 |--------|--------|
-| TUI has HTTP server | When `mdns: true`, TUI starts HTTP server on a random port — fully discoverable |
-| TUI dispatch (v0.6.1) | Use `/tui/clear-prompt` → `/tui/append-prompt` → `/tui/submit-prompt` for real-time TUI visibility |
-| `prompt_async` TUI limitation | `prompt_async` processes server-side but TUI doesn't show it (SSE subscription gap) |
-| Headless mode fallback | `opencode serve` has no TUI endpoints — use `prompt_async` instead |
+| Headless TUI false-positive | `opencode serve` returns `true` for `/tui/*` endpoints but doesn't process them — v0.6.1 regression |
+| Message delivery (v0.6.2+) | Always use `prompt_async` — reliable on both TUI and headless; TUI dispatch removed from `sendMessage` |
+| `prompt_async` in TUI | Message enters session, LLM processes it, response streams in TUI naturally (no SSE gap) |
+| Agent disconnect (v0.6.2+) | `DELETE /api/agents/:id` calls `POST /global/dispose` on OpenCode instance before DB removal |
+| `/global/dispose` vs `/instance/dispose` | `/global/dispose` disposes ALL instances + triggers process exit; `/instance/dispose` is single-instance only |
 | Port scan range | Default: 4096 + 14000-14100 for OpenCode discovery |
 | Spawner tracks PIDs | Only spawned processes are killed on DELETE — manually registered agents untouched |
 | Dispatch auto-claims task | `dispatchTask` claims server-side, injects `lock_token`/`task_id`, releases on prompt send failure |

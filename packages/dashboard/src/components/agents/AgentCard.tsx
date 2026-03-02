@@ -1,3 +1,4 @@
+import { useAgentStore } from '../../stores/agent-store';
 import type { Agent } from '../../types';
 import { AgentStatusBadge } from './AgentStatusBadge';
 
@@ -20,9 +21,18 @@ export function AgentCard({ agent }: AgentCardProps) {
   const isMain = agent.role === 'main';
   const isOnline = agent.status === 'active';
 
+  const handleDisconnect = () => {
+    const confirmed = window.confirm(
+      `Disconnect agent "${agent.name}"? This will terminate the OpenCode process.`,
+    );
+    if (confirmed) {
+      useAgentStore.getState().removeAgentApi(agent.id);
+    }
+  };
+
   return (
     <div
-      className={`bg-gray-800 rounded-lg p-5 border transition-colors ${
+      className={`group bg-gray-800 rounded-lg p-5 border transition-colors ${
         isOnline ? 'border-gray-700' : 'border-gray-800 opacity-60'
       }`}
     >
@@ -32,6 +42,14 @@ export function AgentCard({ agent }: AgentCardProps) {
           <h3 className="text-gray-100 font-semibold truncate">{agent.name}</h3>
           <p className="text-xs text-gray-500">{agent.agentType || 'unknown'}</p>
         </div>
+        <button
+          onClick={handleDisconnect}
+          className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-500 hover:text-red-400 text-lg leading-none px-1"
+          title="Disconnect agent"
+          aria-label={`Disconnect agent ${agent.name}`}
+        >
+          ×
+        </button>
         <AgentStatusBadge status={agent.status} />
       </div>
 

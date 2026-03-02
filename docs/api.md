@@ -14,10 +14,10 @@
 | GET | `/:id/sessions` | List all sessions |
 | POST | `/:id/sessions` | Create new session |
 | GET | `/:id/sessions/:sid/messages` | Fetch messages from specific session |
-| POST | `/:id/sessions/:sid/messages` | Send message to session (TUI dispatch → prompt_async fallback) |
+| POST | `/:id/sessions/:sid/messages` | Send message to session (prompt_async, reliable on TUI + headless) |
 | GET | `/:id/activity` | Get unified agent activity (`?since&limit`) |
 | PATCH | `/:id` | Rename agent (`{ name }`) |
-| DELETE | `/:id` | Remove agent (kills spawned process) |
+| DELETE | `/:id` | Remove agent (disposes OpenCode instance via `/global/dispose`, then kills/removes) |
 | POST | `/spawn` | Spawn new OpenCode server (`{ name, cwd, port }`) |
 | GET | `/spawned` | List spawned processes |
 | POST | `/:id/kill` | Kill spawned OpenCode process |
@@ -61,15 +61,19 @@
 || GET | `/fs` | List filesystem roots (drives on Windows, / on Unix) |
 || GET | `/fs/browse` | Browse directory (`?path&showHidden=0\|1`) → entries with isGitRepo |
 
-### OpenCode Dispatch (v0.6.1+)
+### OpenCode Message Delivery (v0.6.2+)
 
-2-strategy dispatch in `opencode-bridge.ts`:
+`sendMessage()` in `opencode-bridge.ts` uses `prompt_async` exclusively for reliable delivery:
 
-| Strategy | Endpoints | When |
-|----------|-----------|------|
-| TUI (primary) | `/tui/clear-prompt` → `/tui/append-prompt` → `/tui/submit-prompt` | TUI mode — real-time streaming |
-| prompt_async (fallback) | `/session/:id/prompt_async` | Headless `opencode serve` only |
+| Method | Endpoint | Behavior |
+|--------|----------|----------|
+| prompt_async (sole method) | `POST /session/:id/prompt_async` | Injects message into session; LLM processes it; response streams in TUI naturally |
 
+`dispatchTask()` also uses `prompt_async` directly. v0.6.1 TUI dispatch (`/tui/append-prompt` → `/tui/submit-prompt`) was removed because headless `opencode serve` returns `true` for TUI endpoints without processing them, causing silent message loss.
+
+### OpenCode Agent Disconnect (v0.6.2+)
+
+`DELETE /api/agents/:id` now calls `POST /global/dispose` on the OpenCode instance before removing from DB. This triggers graceful shutdown (TUI: immediate exit; headless: exits after event loop drains).
 Key OpenCode server endpoints: `GET/POST /session`, `POST /session/:id/prompt_async`, `POST /session/:id/message` (sync), `POST /session/:id/abort`, `GET /event` (SSE), `POST /tui/{clear,append,submit}-prompt`, `POST /tui/show-toast`. Full spec: `GET /doc` (OpenAPI 3.1).
 ## MCP Tools (stdio mode, `--mcp` flag)
 

@@ -149,13 +149,25 @@ export function createAgentRoutes(
   });
 
   // DELETE /api/agents/:id - Remove an agent entirely (disconnect + delete from DB)
-  // If the agent was spawned by us, also kills the opencode process.
-  // Manually registered agents are only unregistered (their process is NOT killed).
+  // For OpenCode agents: calls /global/dispose to gracefully terminate the process.
+  // For spawned agents: kills the tracked process.
+  // Then removes the agent from the DB.
   app.delete('/:id', async (c) => {
     const agentId = c.req.param('id');
+
+    // Try to gracefully dispose OpenCode instance first
+    try {
+      const agent = services.agentRegistry.getById(agentId);
+      if (agent.connectionType === 'opencode' && agent.serverUrl) {
+        await services.opencodeBridge.disposeInstance(agent.serverUrl);
+      }
+    } catch {
+      // Agent may already be gone from DB — continue with cleanup
+    }
+
     if (spawner) {
-      // kill() only terminates processes tracked in spawner.processes Map;
-      // manually registered agents are not tracked, so their process is untouched.
+      // kill() terminates spawned processes and removes from DB;
+      // for non-spawned agents, it falls through to removeById.
       await spawner.kill(agentId);
     } else {
       await services.agentRegistry.removeById(agentId);

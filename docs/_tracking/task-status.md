@@ -1,7 +1,7 @@
 ## Current
-- [x] TUI Dispatch for real-time OpenCode visibility (v0.6.1)
-  - Done: `opencode-bridge.ts` `sendMessage()` rewritten with 2-strategy dispatch: TUI endpoints (primary) for real-time streaming, `prompt_async` fallback for headless mode. Published as `atc-kanban@0.6.1`.
-  - Verification: User confirmed TUI dispatch working on port 57828. npm published, git pushed.
+- [x] Fix v0.6.1 sendMessage regression + add agent disconnect (v0.6.2)
+  - Done: Removed TUI dispatch from `sendMessage()` — now uses `prompt_async` exclusively (reliable on TUI + headless). Added `disposeInstance()` to OpenCodeBridge (`POST /global/dispose`). Enhanced `DELETE /api/agents/:id` to call dispose before removing. Added disconnect button to AgentCard (hover-reveal × with confirm dialog). Published as `atc-kanban@0.6.2`.
+  - Verification: LSP diagnostics clean, `pnpm build:publish` passed, npm published.
 
 ## Current
 - [x] Add backend auto-dispatch plumbing for new tasks (core + server)
