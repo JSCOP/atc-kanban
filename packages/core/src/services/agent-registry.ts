@@ -449,7 +449,14 @@ export class AgentRegistry {
 
     for (const agent of activeAgents) {
       if (agent.connectionType === 'opencode') {
-        // OpenCode agents: HTTP health check
+        // OpenCode agents: PID check first (fastest, most reliable), then HTTP fallback
+        if (agent.processId != null && !isProcessAlive(agent.processId)) {
+          // PID is known and process is dead — disconnect immediately
+          await this.disconnectById(agent.id, 'process_dead');
+          continue;
+        }
+
+        // HTTP health check (for agents without PID or as additional validation)
         if (agent.serverUrl) {
           try {
             const res = await fetch(`${agent.serverUrl}/global/health`, {
@@ -504,6 +511,7 @@ export class AgentRegistry {
           status: 'active',
           lastHeartbeat: now,
           ...(input.cwd ? { cwd: input.cwd } : {}),
+          ...(input.processId != null ? { processId: input.processId } : {}),
         })
         .where(eq(agents.id, existing.id))
         .run();
@@ -541,6 +549,7 @@ export class AgentRegistry {
 
         if (input.name !== undefined) setData.name = input.name;
         if (input.cwd !== undefined) setData.cwd = input.cwd;
+        if (input.processId != null) setData.processId = input.processId;
 
         this.db.update(agents).set(setData).where(eq(agents.id, byPort.id)).run();
 
@@ -575,6 +584,7 @@ export class AgentRegistry {
         connectedAt: now,
         lastHeartbeat: now,
         cwd: input.cwd ?? null,
+        processId: input.processId ?? null,
         workspaceMode: 'disabled',
       })
       .run();

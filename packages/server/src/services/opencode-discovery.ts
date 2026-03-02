@@ -147,6 +147,21 @@ export class OpenCodeDiscovery {
     // Step 6: Reconcile — re-associate disconnected agents whose port changed
     await this.reconcileAgents(discovered, existingAgents);
 
+    // Step 6b: Update PID for existing agents from discovered instances
+    for (const inst of discovered) {
+      if (inst.existingAgentId && inst.pid != null) {
+        const existingAgent = existingAgents.find((a) => a.id === inst.existingAgentId);
+        if (existingAgent && existingAgent.processId !== inst.pid) {
+          // PID changed or was null — update it in DB
+          this.services.db
+            .update(schema.agents)
+            .set({ processId: inst.pid })
+            .where(eq(schema.agents.id, inst.existingAgentId))
+            .run();
+        }
+      }
+    }
+
     // Step 7: Cross-reference — mark processes whose listen ports were discovered
     for (const proc of processes) {
       if (proc.listenPorts.some((p) => discovered.some((d) => d.port === p))) {
@@ -219,6 +234,10 @@ export class OpenCodeDiscovery {
                 }
                 if (session.title) agentSessionTitles.set(a.id, session.title);
               }
+            } else if (a.sessionId && !titledSessions.some((s) => s.id === a.sessionId)) {
+              // Agent's session no longer exists in the instance — disconnect as stale ghost
+              await this.services.agentRegistry.disconnectById(a.id, 'session_vanished');
+              continue;
             } else if (nextIdx < unassignedSessions.length) {
               // Assign the next available unassigned session
               const session = unassignedSessions[nextIdx++];
@@ -655,6 +674,21 @@ export class OpenCodeDiscovery {
   }
 
   /**
+   * Resolve the OS process ID (PID) for a given server URL by inspecting network state.
+   * Parses the port from the URL, then cross-references with OS netstat/ss output.
+   */
+  async resolvePidForUrl(serverUrl: string): Promise<number | null> {
+    try {
+      const port = Number.parseInt(new URL(serverUrl).port, 10);
+      if (!port || Number.isNaN(port)) return null;
+      const listenMap = await this.getListeningPortsMap();
+      return this.findPidForPort(port, listenMap);
+    } catch {
+      return null;
+    }
+  }
+
+  /**
    * Track a discovered instance by registering it as an OpenCode agent.
    */
   async track(serverUrl: string, name?: string): Promise<{ agentId: string }> {
@@ -703,10 +737,14 @@ export class OpenCodeDiscovery {
     const agentName =
       name || mcpMatch?.name || assignedSession?.title || `OpenCode@${new URL(serverUrl).port}`;
 
+    // Resolve PID for this serverUrl via OS network state
+    const pid = await this.resolvePidForUrl(serverUrl);
+
     const agent = await this.services.agentRegistry.registerOpenCodeAgent({
       name: agentName,
       serverUrl,
       ...(cwd ? { cwd } : {}),
+      ...(pid != null ? { processId: pid } : {}),
     });
 
     // Store session assignment and sync MCP agent data

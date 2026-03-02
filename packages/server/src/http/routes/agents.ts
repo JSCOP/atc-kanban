@@ -214,15 +214,22 @@ export function createAgentRoutes(
     const agentId = c.req.param('id');
     let killed = false;
 
-    // 1. Force kill the process by PID
+    // 1. Force kill the process by PID (with port→PID fallback)
     try {
       const agent = services.agentRegistry.getById(agentId);
-      if (agent.processId) {
+      let pid = agent.processId;
+
+      // Fallback: resolve PID from server URL via OS network state
+      if (!pid && agent.serverUrl && discovery) {
+        pid = await discovery.resolvePidForUrl(agent.serverUrl);
+      }
+
+      if (pid) {
         try {
           if (process.platform === 'win32') {
-            execSync(`taskkill /F /PID ${agent.processId}`, { stdio: 'ignore' });
+            execSync(`taskkill /F /PID ${pid}`, { stdio: 'ignore' });
           } else {
-            process.kill(agent.processId, 'SIGKILL');
+            process.kill(pid, 'SIGKILL');
           }
           killed = true;
         } catch {
