@@ -1,3 +1,4 @@
+import { execSync } from 'node:child_process';
 import type { ATCServices } from '@atc/core';
 import { Hono } from 'hono';
 import type { OpenCodeDiscovery } from '../../services/opencode-discovery.js';
@@ -206,41 +207,39 @@ export function createAgentRoutes(
     }
   });
 
-  // DELETE /api/agents/:id - Remove an agent entirely (disconnect + delete from DB)
-  // For OpenCode agents: calls /global/dispose to gracefully terminate the process.
-  // For spawned agents: kills the tracked process.
-  // Then removes the agent from the DB.
+  // DELETE /api/agents/:id - Remove an agent entirely (kill process + delete from DB)
+  // Strategy: always force-kill via PID (most reliable on Windows and Unix).
+  // HTTP /global/dispose only cleans up state, does NOT terminate the process.
   app.delete('/:id', async (c) => {
     const agentId = c.req.param('id');
-    let disposed = false;
     let killed = false;
 
-    // 1. Try graceful HTTP dispose
+    // 1. Force kill the process by PID
     try {
       const agent = services.agentRegistry.getById(agentId);
-      if (agent.connectionType === 'opencode' && agent.serverUrl) {
-        disposed = await services.opencodeBridge.disposeInstance(agent.serverUrl);
-      }
-      // 2. If dispose failed and we have a PID, force kill
-      if (!disposed && agent.processId) {
+      if (agent.processId) {
         try {
-          process.kill(agent.processId, 'SIGTERM');
+          if (process.platform === 'win32') {
+            execSync(`taskkill /F /PID ${agent.processId}`, { stdio: 'ignore' });
+          } else {
+            process.kill(agent.processId, 'SIGKILL');
+          }
           killed = true;
         } catch {
-          // Process already dead
+          // Process already dead — that's fine
         }
       }
     } catch {
       // Agent may already be gone from DB
     }
 
-    // 3. Clean up DB
+    // 2. Clean up DB
     if (spawner) {
       await spawner.kill(agentId);
     } else {
       await services.agentRegistry.removeById(agentId);
     }
-    return c.json({ ok: true, disposed, killed });
+    return c.json({ ok: true, killed });
   });
 
   // POST /api/agents/spawn - Spawn a new OpenCode server process
