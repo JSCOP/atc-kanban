@@ -41,7 +41,7 @@ export function setupStaticServing(app: Hono): void {
   const indexHtml = readFileSync(resolve(dashboardDist, 'index.html'), 'utf-8');
   app.get('*', (c) => {
     const path = c.req.path;
-    if (path.startsWith('/api') || path.startsWith('/ws') || /\.\w+$/.test(path)) {
+    if (path.startsWith('/api/') || path.startsWith('/ws') || /\.\w+$/.test(path)) {
       return c.notFound();
     }
     // Set no-cache on HTML to prevent stale asset references after rebuilds
